@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Country Lion Training Assessment</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style>
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .lion-gold { color: #D4AF37; }
+        .bg-lion-dark { background-color: #1a202c; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
+
+    <nav class="bg-lion-dark text-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center">
+                    <span class="text-2xl font-bold tracking-wider">Country Lion <span class="text-yellow-500">Assessment</span></span>
+                </div>
+                <div>
+                    <button onclick="app.loadView('login')" class="text-sm text-gray-300 hover:text-white mr-4">Logout</button>
+                    <button onclick="app.loadView('adminLogin')" class="text-sm text-yellow-500 hover:text-yellow-400 font-bold">Admin</button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main id="app-container" class="flex-grow container mx-auto p-6">
+        </main>
+
+    <footer class="bg-gray-800 text-gray-400 py-4 text-center text-sm">
+        &copy; 2026 Country Lion Training. All rights reserved.
+    </footer>
+
+    <script>
+        // --- CONFIGURATION ---
+        // To enable real emails, sign up at emailjs.com and fill these in:
+        const EMAIL_CONFIG = {
+            serviceID: "YOUR_SERVICE_ID",
+            templateID: "YOUR_TEMPLATE_ID",
+            publicKey: "YOUR_PUBLIC_KEY"
+        };
+
+        // --- MOCK DATABASE (LocalStorage) ---
+        // In a real app, replace these methods with Firebase/Supabase calls.
+        const DB = {
+            get: (key) => JSON.parse(localStorage.getItem(key) || "[]"),
+            set: (key, val) => localStorage.setItem(key, JSON.stringify(val)),
+            init: () => {
+                if (!localStorage.getItem('users')) {
+                    // Seed initial data
+                    DB.set('users', [
+                        { name: "John Doe", pin: "1234", assigned: [1] },
+                        { name: "Jane Smith", pin: "5678", assigned: [1, 2] }
+                    ]);
+                    DB.set('quizzes', [
+                        { 
+                            id: 1, 
+                            title: "Health & Safety Basics", 
+                            questions: [
+                                { q: "What is the first step in fire safety?", options: ["Run", "Sound Alarm", "Hide"], ans: 1 },
+                                { q: "Who is responsible for safety?", options: ["Everyone", "Manager", "HR"], ans: 0 }
+                            ]
+                        },
+                        {
+                            id: 2,
+                            title: "Advanced Leadership",
+                            questions: [
+                                { q: "What is the key to delegation?", options: ["Trust", "Micromanagement", "Ignoring"], ans: 0 }
+                            ]
+                        }
+                    ]);
+                    DB.set('results', []);
+                }
+            }
+        };
+
+        // --- APP LOGIC ---
+        const app = {
+            currentUser: null,
+
+            init: () => {
+                DB.init();
+                app.loadView('login');
+                // Initialize EmailJS
+                if(EMAIL_CONFIG.publicKey !== "YOUR_PUBLIC_KEY") emailjs.init(EMAIL_CONFIG.publicKey);
+            },
+
+            // --- VIEWS ---
+            views: {
+                // 1. LOGIN VIEW
+                login: () => `
+                    <div class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-md p-8 fade-in mt-10">
+                        <h2 class="text-2xl font-bold mb-6 text-center text-gray-700">Trainee Login</h2>
+                        <input type="text" id="pinInput" placeholder="Enter your 4-digit PIN" class="w-full p-3 border border-gray-300 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-xl tracking-widest">
+                        <button onclick="app.actions.login()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded transition">Access Assessments</button>
+                        <p class="mt-4 text-xs text-center text-gray-500">Try PIN: 1234 or 5678</p>
+                    </div>
+                `,
+
+                // 2. DASHBOARD VIEW
+                dashboard: () => {
+                    const quizzes = DB.get('quizzes');
+                    const assigned = quizzes.filter(q => app.currentUser.assigned.includes(q.id));
+                    
+                    let html = `
+                        <div class="fade-in">
+                            <h1 class="text-3xl font-bold mb-2">Welcome, ${app.currentUser.name}</h1>
+                            <p class="text-gray-600 mb-8">You have the following assessments to carry out:</p>
+                            <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    `;
+
+                    if(assigned.length === 0) html += `<p>No assessments assigned.</p>`;
+
+                    assigned.forEach(q => {
+                        html += `
+                            <div class="bg-white p-6 rounded-lg shadow hover:shadow-lg transition border-l-4 border-yellow-500">
+                                <h3 class="font-bold text-xl mb-2">${q.title}</h3>
+                                <p class="text-sm text-gray-500 mb-4">${q.questions.length} Questions</p>
+                                <button onclick="app.actions.startQuiz(${q.id})" class="text-blue-600 font-semibold hover:underline">Start Assessment &rarr;</button>
+                            </div>
+                        `;
+                    });
+
+                    html += `</div></div>`;
+                    return html;
+                },
+
+                // 3. QUIZ VIEW
+                quiz: (quizId) => {
+                    const quiz = DB.get('quizzes').find(q => q.id === quizId);
+                    if(!quiz) return "Error loading quiz.";
+                    
+                    let html = `
+                        <div class="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow fade-in">
+                            <div class="flex justify-between items-center mb-6">
+                                <h2 class="text-2xl font-bold">${quiz.title}</h2>
+                                <button onclick="app.loadView('dashboard')" class="text-sm text-gray-400">Cancel</button>
+                            </div>
+                            <form id="quizForm" onsubmit="event.preventDefault(); app.actions.submitQuiz(${quizId})">
+                    `;
+
+                    quiz.questions.forEach((q, index) => {
+                        html += `
+                            <div class="mb-6">
+                                <p class="font-semibold text-lg mb-3">${index + 1}. ${q.q}</p>
+                                <div class="space-y-2">
+                        `;
+                        q.options.forEach((opt, optIndex) => {
+                            html += `
+                                <label class="flex items-center space-x-3 p-3 border rounded cursor-pointer hover:bg-gray-50">
+                                    <input type="radio" name="q${index}" value="${optIndex}" class="form-radio h-5 w-5 text-yellow-500" required>
+                                    <span>${opt}</span>
+                                </label>
+                            `;
+                        });
+                        html += `</div></div>`;
+                    });
+
+                    html += `
+                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded">Submit Assessment</button>
+                        </form></div>
+                    `;
+                    return html;
+                },
+
+                // 4. ADMIN LOGIN
+                adminLogin: () => `
+                    <div class="max-w-md mx-auto bg-gray-800 text-white rounded-xl shadow-md p-8 fade-in mt-10 border border-gray-700">
+                        <h2 class="text-2xl font-bold mb-6 text-center text-yellow-500">Admin Portal</h2>
+                        <input type="password" id="adminPass" placeholder="Admin Password" class="w-full p-3 bg-gray-700 border border-gray-600 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center">
+                        <button onclick="app.actions.authAdmin()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 rounded transition">Login</button>
+                        <p class="mt-4 text-xs text-center text-gray-500">Demo Pass: admin</p>
+                    </div>
+                `,
+
+                // 5. ADMIN DASHBOARD
+                adminDashboard: () => {
+                    const results = DB.get('results');
+                    const users = DB.get('users');
+                    
+                    // Helper to generate User Rows
+                    const userRows = users.map(u => `
+                        <tr class="border-b">
+                            <td class="p-3">${u.name}</td>
+                            <td class="p-3 font-mono text-blue-600">${u.pin}</td>
+                            <td class="p-3">${u.assigned.length} Tests</td>
+                        </tr>
+                    `).join('');
+
+                    // Helper to generate Result Rows
+                    const resultRows = results.reverse().map(r => `
+                        <tr class="border-b hover:bg-gray-50">
+                            <td class="p-3">${r.userName}</td>
+                            <td class="p-3">${r.quizTitle}</td>
+                            <td class="p-3 font-bold ${r.score >= 50 ? 'text-green-600' : 'text-red-600'}">${r.score}%</td>
+                            <td class="p-3 text-sm text-gray-500">${new Date(r.date).toLocaleString()}</td>
+                        </tr>
+                    `).join('');
+
+                    return `
+                        <div class="fade-in space-y-8">
+                            <div class="flex justify-between items-center">
+                                <h2 class="text-3xl font-bold text-gray-800">Admin Dashboard</h2>
+                                <button onclick="app.actions.createUser()" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">+ Create User & Generate PIN</button>
+                            </div>
+
+                            <div class="bg-white rounded shadow overflow-hidden">
+                                <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">Recent Quiz Results</div>
+                                <table class="w-full text-left border-collapse">
+                                    <thead><tr class="bg-gray-100 text-gray-600 text-sm">
+                                        <th class="p-3">User</th><th class="p-3">Quiz</th><th class="p-3">Score</th><th class="p-3">Date</th>
+                                    </tr></thead>
+                                    <tbody>${results.length ? resultRows : '<tr><td colspan="4" class="p-4 text-center text-gray-500">No results yet.</td></tr>'}</tbody>
+                                </table>
+                            </div>
+
+                            <div class="bg-white rounded shadow overflow-hidden">
+                                <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">Enrolled Users</div>
+                                <table class="w-full text-left border-collapse">
+                                    <thead><tr class="bg-gray-100 text-gray-600 text-sm">
+                                        <th class="p-3">Name</th><th class="p-3">PIN</th><th class="p-3">Assigned</th>
+                                    </tr></thead>
+                                    <tbody>${userRows}</tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                }
+            },
+
+            // --- ACTIONS ---
+            actions: {
+                loadView: (viewName, param) => {
+                    document.getElementById('app-container').innerHTML = app.views[viewName](param);
+                },
+
+                login: () => {
+                    const pin = document.getElementById('pinInput').value;
+                    const users = DB.get('users');
+                    const user = users.find(u => u.pin === pin);
+                    if (user) {
+                        app.currentUser = user;
+                        app.actions.loadView('dashboard');
+                    } else {
+                        alert('Invalid PIN');
+                    }
+                },
+
+                startQuiz: (id) => {
+                    app.actions.loadView('quiz', id);
+                },
+
+                submitQuiz: (quizId) => {
+                    const quiz = DB.get('quizzes').find(q => q.id === quizId);
+                    const form = document.getElementById('quizForm');
+                    const formData = new FormData(form);
+                    
+                    let score = 0;
+                    quiz.questions.forEach((q, idx) => {
+                        const answer = formData.get(`q${idx}`);
+                        if (answer && parseInt(answer) === q.ans) score++;
+                    });
+
+                    const percentage = Math.round((score / quiz.questions.length) * 100);
+
+                    // Save Result
+                    const result = {
+                        userName: app.currentUser.name,
+                        quizTitle: quiz.title,
+                        score: percentage,
+                        date: new Date().toISOString()
+                    };
+                    
+                    const results = DB.get('results');
+                    results.push(result);
+                    DB.set('results', results);
+
+                    // Email Trigger (Simulated)
+                    app.actions.sendEmail(result);
+
+                    alert(`Assessment Complete! Score: ${percentage}%`);
+                    app.actions.loadView('dashboard');
+                },
+
+                authAdmin: () => {
+                    const pass = document.getElementById('adminPass').value;
+                    if(pass === 'admin') app.actions.loadView('adminDashboard');
+                    else alert('Incorrect Password');
+                },
+
+                createUser: () => {
+                    const name = prompt("Enter User Name:");
+                    if(!name) return;
+                    const pin = Math.floor(1000 + Math.random() * 9000).toString();
+                    const newUser = { name: name, pin: pin, assigned: [1] }; // Default assign quiz 1
+                    
+                    const users = DB.get('users');
+                    users.push(newUser);
+                    DB.set('users', users);
+                    app.actions.loadView('adminDashboard');
+                    alert(`User Created!\nName: ${name}\nPIN: ${pin}`);
+                },
+
+                sendEmail: (data) => {
+                    // MOCK EMAIL - Log to console
+                    console.log("SENDING EMAIL:", data);
+                    
+                    // REAL EMAIL INTEGRATION:
+                    if(typeof emailjs !== 'undefined' && EMAIL_CONFIG.serviceID !== "YOUR_SERVICE_ID") {
+                       emailjs.send(EMAIL_CONFIG.serviceID, EMAIL_CONFIG.templateID, {
+                           to_name: "Admin",
+                           from_name: data.userName,
+                           message: `Completed ${data.quizTitle} with a score of ${data.score}%`
+                       });
+                    }
+                }
+            }
+        };
+
+        // Start App
+        app.init();
+    </script>
+</body>
+</html>
