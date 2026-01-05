@@ -162,7 +162,7 @@
             editingQuiz: null,
 
             init: async () => {
-                window.app = App; // Make globally available
+                // window.app = App; // REMOVED from here
                 App.showLoader(true);
                 try {
                     await DB.seedDefaults();
@@ -629,8 +629,12 @@
             }
         };
 
+        // EXPOSE APP GLOBALLY
+        window.app = App;
+
         // Start App
-        window.onload = () => window.app.init();
+        // Use addEventListener to avoid overwriting other scripts and ensure DOM is ready
+        window.addEventListener('load', () => window.app.init());
     </script>
 </body>
 </html>
