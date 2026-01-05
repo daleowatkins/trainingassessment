@@ -90,10 +90,13 @@
         // --- EMAILJS CONFIGURATION ---
         // Register at emailjs.com to get these keys for free
         const emailConfig = {
-            serviceID: "YOUR_SERVICE_ID",
-            templateID: "YOUR_TEMPLATE_ID", 
+            serviceID: "service_b0zzpkb",
+            templateID: "template_tq4tz6p", 
             publicKey: "zt6NEchi0KdWgUqJ9"
         };
+
+        // --- APP SETTINGS ---
+        const APP_PUBLIC_URL = "https://daleowatkins.github.io/trainingassessment/"; 
 
         // Initialize Firebase
         let db;
@@ -520,7 +523,7 @@
                 App.showLoader(true);
                 const name = document.getElementById('formName').value.trim();
                 const email = document.getElementById('formEmail').value.trim();
-                const username = document.getElementById('formUsername').value.trim();
+                const username = document.getElementById('formUsername').value.trim().toLowerCase(); // Force lowercase
                 const pin = document.getElementById('formPin').value.trim();
                 const role = document.getElementById('formRole').value;
                 const assigned = Array.from(document.querySelectorAll('#assigned-container > div')).map(d => parseInt(d.dataset.id));
@@ -553,12 +556,26 @@
                     return;
                 }
 
+                // Resolve Link:
+                // 1. Try Config URL
+                // 2. Try Window URL (if not blob)
+                // 3. Fallback: Prompt user
+                let appLink = APP_PUBLIC_URL;
+                if (!appLink) {
+                    if (window.location.href.startsWith("http") && !window.location.href.includes("localhost") && !window.location.href.startsWith("blob:")) {
+                        appLink = window.location.href;
+                    } else {
+                        appLink = prompt("Please enter the public URL for your app (e.g. your GitHub Pages link) to ensure the email link works:", "https://your-username.github.io/repository-name");
+                        if (!appLink) return;
+                    }
+                }
+
                 // Gather assignment details
                 App.showLoader(true);
                 const allQ = await DB.getAll("quizzes");
                 const assignedTitles = (user.assigned || []).map(id => {
                     const q = allQ.find(x => x.id === id);
-                    return q ? `<li>${q.title}</li>` : '';
+                    return q ? `<li style="margin-bottom: 8px; font-weight: 600; color: #4a5568;">${q.title}</li>` : '';
                 }).join('');
 
                 const templateParams = {
@@ -566,8 +583,8 @@
                     to_email: email,
                     username: user.username,
                     pin: user.pin,
-                    app_link: window.location.href, // Current URL
-                    assessments_list: `<ul>${assignedTitles}</ul>`
+                    app_link: appLink,
+                    assessments_list: `<ul style="padding-left: 20px; margin-top: 0;">${assignedTitles}</ul>`
                 };
 
                 try {
