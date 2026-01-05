@@ -4,326 +4,1089 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Country Lion Training Assessment</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- EmailJS -->
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    
     <style>
-        .fade-in { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .lion-gold { color: #D4AF37; }
-        .bg-lion-dark { background-color: #1a202c; }
+        :root {
+            --lion-gold: #D4AF37;
+            --lion-dark: #1a202c;
+        }
+        .text-lion-gold { color: var(--lion-gold); }
+        .bg-lion-gold { background-color: var(--lion-gold); }
+        .border-lion-gold { border-color: var(--lion-gold); }
+        
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .loader { border-top-color: var(--lion-gold); -webkit-animation: spinner 1.5s linear infinite; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans min-h-screen flex flex-col">
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
 
-    <nav class="bg-lion-dark text-white shadow-lg">
+    <!-- NAVIGATION -->
+    <nav class="bg-gray-900 text-white shadow-lg sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16 items-center">
-                <div class="flex items-center">
-                    <span class="text-2xl font-bold tracking-wider">Country Lion <span class="text-yellow-500">Assessment</span></span>
+                <div class="flex items-center cursor-pointer" onclick="window.app.logout()">
+                    <i class="fas fa-lion text-lion-gold text-2xl mr-3"></i>
+                    <span class="text-xl font-bold tracking-wider">COUNTRY LION <span class="text-lion-gold">TRAINING</span></span>
                 </div>
-                <div>
-                    <button onclick="app.loadView('login')" class="text-sm text-gray-300 hover:text-white mr-4">Logout</button>
-                    <button onclick="app.loadView('adminLogin')" class="text-sm text-yellow-500 hover:text-yellow-400 font-bold">Admin</button>
+                <div id="nav-buttons" class="flex items-center">
+                    <!-- Injected by JS -->
                 </div>
             </div>
         </div>
     </nav>
 
-    <main id="app-container" class="flex-grow container mx-auto p-6">
-        </main>
+    <!-- MAIN APP CONTAINER -->
+    <main id="app" class="flex-grow container mx-auto p-4 sm:p-6">
+        <div class="flex justify-center items-center h-64">
+            <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12"></div>
+        </div>
+    </main>
 
-    <footer class="bg-gray-800 text-gray-400 py-4 text-center text-sm">
-        &copy; 2026 Country Lion Training. All rights reserved.
+    <!-- FOOTER -->
+    <footer class="bg-gray-800 text-gray-500 py-6 text-center text-sm mt-auto">
+        <p>&copy; 2026 Country Lion Training Assessment. System Version 2.9</p>
     </footer>
 
+    <!-- JAVASCRIPT LOGIC -->
     <script>
-        // --- CONFIGURATION ---
-        // To enable real emails, sign up at emailjs.com and fill these in:
-        const EMAIL_CONFIG = {
-            serviceID: "YOUR_SERVICE_ID",
-            templateID: "YOUR_TEMPLATE_ID",
-            publicKey: "YOUR_PUBLIC_KEY"
-        };
-
-        // --- MOCK DATABASE (LocalStorage) ---
-        // In a real app, replace these methods with Firebase/Supabase calls.
+        // --- DATABASE ---
         const DB = {
-            get: (key) => JSON.parse(localStorage.getItem(key) || "[]"),
-            set: (key, val) => localStorage.setItem(key, JSON.stringify(val)),
+            getKey: (key) => JSON.parse(localStorage.getItem('cl_' + key) || "null"),
+            setKey: (key, data) => localStorage.setItem('cl_' + key, JSON.stringify(data)),
+            
             init: () => {
-                if (!localStorage.getItem('users')) {
-                    // Seed initial data
-                    DB.set('users', [
-                        { name: "John Doe", pin: "1234", assigned: [1] },
-                        { name: "Jane Smith", pin: "5678", assigned: [1, 2] }
-                    ]);
-                    DB.set('quizzes', [
-                        { 
-                            id: 1, 
-                            title: "Health & Safety Basics", 
-                            questions: [
-                                { q: "What is the first step in fire safety?", options: ["Run", "Sound Alarm", "Hide"], ans: 1 },
-                                { q: "Who is responsible for safety?", options: ["Everyone", "Manager", "HR"], ans: 0 }
-                            ]
-                        },
-                        {
-                            id: 2,
-                            title: "Advanced Leadership",
-                            questions: [
-                                { q: "What is the key to delegation?", options: ["Trust", "Micromanagement", "Ignoring"], ans: 0 }
-                            ]
-                        }
-                    ]);
-                    DB.set('results', []);
+                // Initialize Quizzes
+                const defaultQuizzes = [
+                    { 
+                        id: 1, 
+                        title: "Site Safety Induction", 
+                        desc: "Mandatory safety protocols for all site visitors.",
+                        displayCount: 3, // Display all 3
+                        passMark: 2,     // Need 2 correct
+                        questions: [
+                            { q: "What color is a prohibition sign?", options: ["Red", "Green", "Blue", "Yellow"], ans: 0, explain: "Prohibition signs (e.g., No Entry) are always Red with a crossbar." },
+                            { q: "What should you do if you hear the fire alarm?", options: ["Finish work", "Evacuate to assembly point", "Hide"], ans: 1, explain: "Immediate evacuation to the designated assembly point is crucial for safety." },
+                            { q: "Who is responsible for your PPE?", options: ["Your Manager", "You", "The Client"], ans: 1, explain: "While companies provide it, YOU are legally responsible for wearing and maintaining your PPE." }
+                        ]
+                    },
+                    {
+                        id: 2,
+                        title: "Manual Handling",
+                        desc: "Correct techniques for lifting heavy objects.",
+                        displayCount: 2,
+                        passMark: 1,
+                        questions: [
+                            { q: "What is the maximum weight one person should lift?", options: ["25kg", "50kg", "No limit if strong"], ans: 0, explain: "25kg is the generally accepted guideline for a safe maximum load for one person." },
+                            { q: "Keep the load...", options: ["Away from body", "Close to waist", "Above head"], ans: 1, explain: "Keeping the load close to your center of gravity reduces strain on your back." }
+                        ]
+                    }
+                ];
+
+                const existingQuizzes = DB.getKey('quizzes');
+                if (!existingQuizzes) {
+                    DB.setKey('quizzes', defaultQuizzes);
                 }
+
+                // Initialize Users
+                if (!DB.getKey('users')) {
+                    DB.setKey('users', [
+                        { id: 'u1', name: "John Doe", username: "jdoe", pin: "1234", role: 'learner', assigned: [1, 2] },
+                        { id: 'u_admin', name: "System Admin", username: "admin", pin: "0000", role: 'admin', assigned: [1, 2] }
+                    ]);
+                } else {
+                    const users = DB.getKey('users');
+                    let updated = false;
+                    users.forEach(u => {
+                        if (!u.assigned) { u.assigned = [1]; updated = true; }
+                    });
+                    if (updated) DB.setKey('users', users);
+                }
+
+                if (!DB.getKey('results')) DB.setKey('results', []);
             }
         };
 
         // --- APP LOGIC ---
-        const app = {
+        const App = {
             currentUser: null,
+            currentQuizSession: null, // Stores the randomized quiz instance
+            editingUser: null,
+            editingQuiz: null,
 
             init: () => {
                 DB.init();
-                app.loadView('login');
-                // Initialize EmailJS
-                if(EMAIL_CONFIG.publicKey !== "YOUR_PUBLIC_KEY") emailjs.init(EMAIL_CONFIG.publicKey);
+                App.render('login');
+                
+                window.addEventListener('click', (e) => {
+                    const container = document.getElementById('quizInputContainer');
+                    const dropdown = document.getElementById('quizDropdown');
+                    if (container && dropdown && !container.contains(e.target)) {
+                        dropdown.classList.add('hidden');
+                    }
+                });
             },
 
-            // --- VIEWS ---
-            views: {
-                // 1. LOGIN VIEW
-                login: () => `
-                    <div class="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden md:max-w-md p-8 fade-in mt-10">
-                        <h2 class="text-2xl font-bold mb-6 text-center text-gray-700">Trainee Login</h2>
-                        <input type="text" id="pinInput" placeholder="Enter your 4-digit PIN" class="w-full p-3 border border-gray-300 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center text-xl tracking-widest">
-                        <button onclick="app.actions.login()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 rounded transition">Access Assessments</button>
-                        <p class="mt-4 text-xs text-center text-gray-500">Try PIN: 1234 or 5678</p>
-                    </div>
-                `,
-
-                // 2. DASHBOARD VIEW
-                dashboard: () => {
-                    const quizzes = DB.get('quizzes');
-                    const assigned = quizzes.filter(q => app.currentUser.assigned.includes(q.id));
+            updateNav: () => {
+                const nav = document.getElementById('nav-buttons');
+                if (App.currentUser) {
+                    const roleBadge = App.currentUser.role === 'admin' 
+                        ? `<span class="bg-lion-gold text-gray-900 text-xs px-2 py-1 rounded font-bold mr-2">ADMIN</span>` 
+                        : '';
                     
-                    let html = `
-                        <div class="fade-in">
-                            <h1 class="text-3xl font-bold mb-2">Welcome, ${app.currentUser.name}</h1>
-                            <p class="text-gray-600 mb-8">You have the following assessments to carry out:</p>
-                            <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    `;
+                    const adminLink = App.currentUser.role === 'admin'
+                        ? `<button onclick="window.app.render('adminDashboard')" class="mr-4 text-sm font-bold text-lion-gold hover:text-yellow-400 transition"><i class="fas fa-tools mr-1"></i> Admin Panel</button>`
+                        : '';
 
-                    if(assigned.length === 0) html += `<p>No assessments assigned.</p>`;
-
-                    assigned.forEach(q => {
-                        html += `
-                            <div class="bg-white p-6 rounded-lg shadow hover:shadow-lg transition border-l-4 border-yellow-500">
-                                <h3 class="font-bold text-xl mb-2">${q.title}</h3>
-                                <p class="text-sm text-gray-500 mb-4">${q.questions.length} Questions</p>
-                                <button onclick="app.actions.startQuiz(${q.id})" class="text-blue-600 font-semibold hover:underline">Start Assessment &rarr;</button>
-                            </div>
-                        `;
-                    });
-
-                    html += `</div></div>`;
-                    return html;
-                },
-
-                // 3. QUIZ VIEW
-                quiz: (quizId) => {
-                    const quiz = DB.get('quizzes').find(q => q.id === quizId);
-                    if(!quiz) return "Error loading quiz.";
-                    
-                    let html = `
-                        <div class="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow fade-in">
-                            <div class="flex justify-between items-center mb-6">
-                                <h2 class="text-2xl font-bold">${quiz.title}</h2>
-                                <button onclick="app.loadView('dashboard')" class="text-sm text-gray-400">Cancel</button>
-                            </div>
-                            <form id="quizForm" onsubmit="event.preventDefault(); app.actions.submitQuiz(${quizId})">
-                    `;
-
-                    quiz.questions.forEach((q, index) => {
-                        html += `
-                            <div class="mb-6">
-                                <p class="font-semibold text-lg mb-3">${index + 1}. ${q.q}</p>
-                                <div class="space-y-2">
-                        `;
-                        q.options.forEach((opt, optIndex) => {
-                            html += `
-                                <label class="flex items-center space-x-3 p-3 border rounded cursor-pointer hover:bg-gray-50">
-                                    <input type="radio" name="q${index}" value="${optIndex}" class="form-radio h-5 w-5 text-yellow-500" required>
-                                    <span>${opt}</span>
-                                </label>
-                            `;
-                        });
-                        html += `</div></div>`;
-                    });
-
-                    html += `
-                        <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded">Submit Assessment</button>
-                        </form></div>
-                    `;
-                    return html;
-                },
-
-                // 4. ADMIN LOGIN
-                adminLogin: () => `
-                    <div class="max-w-md mx-auto bg-gray-800 text-white rounded-xl shadow-md p-8 fade-in mt-10 border border-gray-700">
-                        <h2 class="text-2xl font-bold mb-6 text-center text-yellow-500">Admin Portal</h2>
-                        <input type="password" id="adminPass" placeholder="Admin Password" class="w-full p-3 bg-gray-700 border border-gray-600 rounded mb-4 focus:outline-none focus:ring-2 focus:ring-yellow-500 text-center">
-                        <button onclick="app.actions.authAdmin()" class="w-full bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold py-3 rounded transition">Login</button>
-                        <p class="mt-4 text-xs text-center text-gray-500">Demo Pass: admin</p>
-                    </div>
-                `,
-
-                // 5. ADMIN DASHBOARD
-                adminDashboard: () => {
-                    const results = DB.get('results');
-                    const users = DB.get('users');
-                    
-                    // Helper to generate User Rows
-                    const userRows = users.map(u => `
-                        <tr class="border-b">
-                            <td class="p-3">${u.name}</td>
-                            <td class="p-3 font-mono text-blue-600">${u.pin}</td>
-                            <td class="p-3">${u.assigned.length} Tests</td>
-                        </tr>
-                    `).join('');
-
-                    // Helper to generate Result Rows
-                    const resultRows = results.reverse().map(r => `
-                        <tr class="border-b hover:bg-gray-50">
-                            <td class="p-3">${r.userName}</td>
-                            <td class="p-3">${r.quizTitle}</td>
-                            <td class="p-3 font-bold ${r.score >= 50 ? 'text-green-600' : 'text-red-600'}">${r.score}%</td>
-                            <td class="p-3 text-sm text-gray-500">${new Date(r.date).toLocaleString()}</td>
-                        </tr>
-                    `).join('');
-
-                    return `
-                        <div class="fade-in space-y-8">
-                            <div class="flex justify-between items-center">
-                                <h2 class="text-3xl font-bold text-gray-800">Admin Dashboard</h2>
-                                <button onclick="app.actions.createUser()" class="bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700">+ Create User & Generate PIN</button>
-                            </div>
-
-                            <div class="bg-white rounded shadow overflow-hidden">
-                                <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">Recent Quiz Results</div>
-                                <table class="w-full text-left border-collapse">
-                                    <thead><tr class="bg-gray-100 text-gray-600 text-sm">
-                                        <th class="p-3">User</th><th class="p-3">Quiz</th><th class="p-3">Score</th><th class="p-3">Date</th>
-                                    </tr></thead>
-                                    <tbody>${results.length ? resultRows : '<tr><td colspan="4" class="p-4 text-center text-gray-500">No results yet.</td></tr>'}</tbody>
-                                </table>
-                            </div>
-
-                            <div class="bg-white rounded shadow overflow-hidden">
-                                <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">Enrolled Users</div>
-                                <table class="w-full text-left border-collapse">
-                                    <thead><tr class="bg-gray-100 text-gray-600 text-sm">
-                                        <th class="p-3">Name</th><th class="p-3">PIN</th><th class="p-3">Assigned</th>
-                                    </tr></thead>
-                                    <tbody>${userRows}</tbody>
-                                </table>
-                            </div>
+                    nav.innerHTML = `
+                        <div class="flex items-center">
+                            ${roleBadge}
+                            ${adminLink}
+                            <span class="mr-4 text-sm text-gray-400 hidden sm:block">${App.currentUser.name}</span>
+                            <button onclick="window.app.logout()" class="text-sm border border-gray-600 hover:border-white text-gray-300 hover:text-white px-3 py-1 rounded transition">Logout</button>
                         </div>
                     `;
+                } else {
+                    nav.innerHTML = '';
+                }
+            },
+
+            render: (viewName, data = null) => {
+                const container = document.getElementById('app');
+                App.updateNav();
+                
+                switch(viewName) {
+                    
+                    case 'login':
+                        container.innerHTML = `
+                            <div class="max-w-md mx-auto mt-10 bg-white p-8 rounded-xl shadow-xl fade-in border-t-4 border-lion-gold">
+                                <div class="text-center mb-6">
+                                    <i class="fas fa-user-circle text-5xl text-gray-300 mb-2"></i>
+                                    <h2 class="text-2xl font-bold text-gray-800">Login</h2>
+                                    <p class="text-gray-500 text-sm">Enter your Username and PIN</p>
+                                </div>
+                                <form onsubmit="event.preventDefault(); window.app.handleLogin()" class="space-y-4">
+                                    <div>
+                                        <label class="block text-gray-600 text-xs font-bold mb-1 uppercase">Username</label>
+                                        <input type="text" id="loginUsername" placeholder="e.g. jdoe" class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold focus:ring-1 focus:ring-lion-gold transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-gray-600 text-xs font-bold mb-1 uppercase">PIN</label>
+                                        <input type="password" id="loginPin" placeholder="****" maxlength="4" class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold focus:ring-1 focus:ring-lion-gold transition font-mono tracking-widest">
+                                    </div>
+                                    <button type="submit" class="w-full bg-lion-gold hover:bg-yellow-600 text-white font-bold py-3 rounded-lg shadow transition transform hover:scale-[1.02]">
+                                        Log In
+                                    </button>
+                                </form>
+                                <div class="mt-6 text-center text-xs text-gray-400 bg-gray-50 p-2 rounded">
+                                    <p><strong>Demo Admin:</strong> User: admin / PIN: 0000</p>
+                                    <p class="mt-1"><strong>Demo User:</strong> User: jdoe / PIN: 1234</p>
+                                </div>
+                            </div>
+                        `;
+                        break;
+
+                    case 'dashboard':
+                        if (!App.currentUser) return App.render('login');
+
+                        const quizzes = DB.getKey('quizzes');
+                        const history = DB.getKey('results').filter(r => r.userId === App.currentUser.id);
+                        const assignedQuizzes = quizzes.filter(q => (App.currentUser.assigned || []).includes(q.id));
+
+                        let quizCards = assignedQuizzes.map(q => {
+                            const attempts = history.filter(h => h.quizId === q.id);
+                            const lastAttempt = attempts.length ? attempts[attempts.length-1] : null;
+                            const isPassed = lastAttempt && lastAttempt.passed; // Use stored pass status
+
+                            return `
+                                <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300 flex flex-col h-full border-l-4 ${isPassed ? 'border-green-500' : 'border-lion-gold'}">
+                                    <div class="p-6 flex-grow">
+                                        <div class="flex justify-between items-start mb-2">
+                                            <h3 class="font-bold text-xl text-gray-800">${q.title}</h3>
+                                            ${isPassed 
+                                                ? '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-bold">COMPLETED</span>' 
+                                                : '<span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full font-bold">PENDING</span>'}
+                                        </div>
+                                        <p class="text-gray-600 text-sm mb-4">${q.desc}</p>
+                                        <div class="text-xs text-gray-500">
+                                            Display: ${q.displayCount || 'All'} Questions<br>
+                                            Pass Mark: ${q.passMark ? q.passMark + ' Correct' : '70%'}<br>
+                                            Last Score: ${lastAttempt ? lastAttempt.score + '%' : 'Not taken'}
+                                        </div>
+                                    </div>
+                                    <div class="bg-gray-50 p-4 border-t border-gray-100">
+                                        <button onclick="window.app.startQuiz(${q.id})" class="w-full ${isPassed ? 'bg-gray-200 text-gray-600' : 'bg-gray-800 text-white hover:bg-gray-900'} font-bold py-2 rounded transition flex justify-center items-center">
+                                            ${isPassed ? 'Retake Assessment' : 'Start Assessment <i class="fas fa-arrow-right ml-2"></i>'}
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                        
+                        if (assignedQuizzes.length === 0) {
+                            quizCards = `<div class="col-span-3 text-center py-10 text-gray-500">You have no assessments assigned at this time.</div>`;
+                        }
+
+                        container.innerHTML = `
+                            <div class="fade-in">
+                                <div class="bg-white p-6 rounded-lg shadow-sm mb-8 border-b border-gray-200">
+                                    <h1 class="text-3xl font-bold text-gray-800">Welcome, <span class="text-lion-gold">${App.currentUser.name}</span></h1>
+                                    <p class="text-gray-600 mt-1">You have <span class="font-bold">${assignedQuizzes.length}</span> assigned assessments.</p>
+                                </div>
+                                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    ${quizCards}
+                                </div>
+                            </div>
+                        `;
+                        break;
+
+                    case 'quiz':
+                        // Render based on Active Session
+                        const session = App.currentQuizSession;
+                        if (!session) return App.render('dashboard');
+
+                        let questionsHtml = session.questions.map((q, idx) => `
+                            <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                                <p class="font-semibold text-lg text-gray-800 mb-4"><span class="text-lion-gold font-bold mr-2">Q${idx+1}.</span> ${q.q}</p>
+                                <div class="space-y-3">
+                                    ${q.options.map((opt, optIdx) => `
+                                        <label class="flex items-center p-3 bg-white border border-gray-300 rounded cursor-pointer hover:border-lion-gold hover:bg-yellow-50 transition">
+                                            <input type="radio" name="q_${idx}" value="${optIdx}" class="w-4 h-4 text-lion-gold focus:ring-lion-gold border-gray-300" required>
+                                            <span class="ml-3 text-gray-700">${opt}</span>
+                                        </label>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('');
+
+                        container.innerHTML = `
+                            <div class="max-w-3xl mx-auto fade-in bg-white p-8 rounded-xl shadow-lg">
+                                <div class="flex justify-between items-center mb-6 pb-4 border-b">
+                                    <div>
+                                        <h2 class="text-2xl font-bold">${session.title}</h2>
+                                        <p class="text-xs text-gray-500 mt-1">Pass Mark: ${session.passMark} correct out of ${session.questions.length}</p>
+                                    </div>
+                                    <button onclick="window.app.render('dashboard')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i> Cancel</button>
+                                </div>
+                                <form id="quizForm" onsubmit="event.preventDefault(); window.app.submitQuiz()">
+                                    ${questionsHtml}
+                                    <div class="mt-8 pt-4 border-t border-gray-100 flex justify-end">
+                                        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow transition text-lg">
+                                            Submit Assessment
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        `;
+                        break;
+                    
+                    case 'quizResults':
+                        const resultId = data;
+                        const result = DB.getKey('results').find(r => r.resultId === resultId);
+                        
+                        if (!result) return alert("Result not found");
+                        
+                        // New Snapshot Logic (Or Fallback for old results)
+                        let resultsHtml = '';
+                        let passed = false;
+
+                        if (result.snapshot) {
+                            // New System: Use Snapshot
+                            passed = result.passed;
+                            resultsHtml = result.snapshot.map((item, idx) => {
+                                const isCorrect = item.userAns === item.ans;
+                                const icon = isCorrect ? '<i class="fas fa-check-circle text-green-600"></i>' : '<i class="fas fa-times-circle text-red-600"></i>';
+                                
+                                const optionsFeedback = item.options.map((opt, optIdx) => {
+                                    let style = "p-2 rounded border border-gray-200 bg-white text-gray-500";
+                                    let iconHTML = "";
+                                    
+                                    if (optIdx === item.ans) {
+                                        style = "p-2 rounded border border-green-500 bg-green-100 text-green-800 font-bold";
+                                        iconHTML = '<i class="fas fa-check float-right mt-1"></i>';
+                                    } else if (optIdx === item.userAns && !isCorrect) {
+                                        style = "p-2 rounded border border-red-500 bg-red-100 text-red-800 font-bold";
+                                        iconHTML = '<i class="fas fa-times float-right mt-1"></i>';
+                                    }
+                                    return `<div class="${style} text-sm mb-1">${opt} ${iconHTML}</div>`;
+                                }).join('');
+
+                                return `
+                                    <div class="mb-6 p-5 rounded-lg border-l-4 shadow-sm bg-white ${isCorrect ? 'border-green-500' : 'border-red-500'}">
+                                        <div class="flex justify-between items-start mb-3">
+                                            <h4 class="font-bold text-gray-800">Question ${idx+1}</h4>
+                                            <span class="text-xl">${icon}</span>
+                                        </div>
+                                        <p class="text-gray-700 mb-3">${item.q}</p>
+                                        <div class="space-y-1 mb-4">${optionsFeedback}</div>
+                                        <div class="bg-gray-100 p-3 rounded text-sm text-gray-600 border-l-2 border-gray-400">
+                                            <strong class="text-gray-800"><i class="fas fa-info-circle text-lion-gold"></i> Explanation:</strong> 
+                                            ${item.explain || "No explanation provided."}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('');
+                        } else {
+                            // Old System: Map to Quiz DB (Legacy Support)
+                            const rQuiz = DB.getKey('quizzes').find(q => q.id === result.quizId);
+                            if(rQuiz) {
+                                passed = result.score >= 70;
+                                resultsHtml = rQuiz.questions.map((q, idx) => {
+                                    const userAns = result.answers[idx]; 
+                                    const isCorrect = userAns === q.ans;
+                                    // ... (Old rendering logic omitted for brevity, essentially same as above) ...
+                                    return `<div class="p-4 mb-2 bg-gray-100">Legacy Result Format</div>`;
+                                }).join('');
+                            } else {
+                                resultsHtml = '<p class="text-red-500 text-center">Legacy quiz data missing.</p>';
+                            }
+                        }
+
+                        const backAction = App.currentUser.role === 'admin' ? "window.app.render('adminDashboard')" : "window.app.render('dashboard')";
+                        const backText = App.currentUser.role === 'admin' ? "Back to Admin Panel" : "Back to Dashboard";
+
+                        container.innerHTML = `
+                             <div class="max-w-3xl mx-auto fade-in">
+                                <div class="bg-white p-8 rounded-xl shadow-lg mb-8 text-center border-t-4 ${passed ? 'border-green-500' : 'border-red-500'}">
+                                    <div class="text-gray-400 text-sm uppercase tracking-widest mb-1">Detailed Result Report</div>
+                                    <h2 class="text-3xl font-bold mb-2">${passed ? 'PASSED' : 'FAILED'}</h2>
+                                    <div class="text-5xl font-bold my-4 ${passed ? 'text-green-600' : 'text-red-600'}">${result.score}%</div>
+                                    <p class="text-gray-500 mb-6">User: <span class="font-bold text-gray-800">${result.userName || 'Unknown'}</span> | Date: ${new Date(result.date).toLocaleDateString()}</p>
+                                    <button onclick="${backAction}" class="bg-gray-800 text-white px-6 py-2 rounded hover:bg-gray-900 transition">${backText}</button>
+                                </div>
+
+                                <div class="space-y-6">
+                                    ${resultsHtml}
+                                </div>
+                                <div class="text-center mt-8 pb-10">
+                                     <button onclick="${backAction}" class="text-gray-500 underline hover:text-gray-800">${backText}</button>
+                                </div>
+                            </div>
+                        `;
+                        break;
+
+                    case 'adminDashboard':
+                        if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
+                        const allUsers = DB.getKey('users');
+                        const allResults = DB.getKey('results');
+                        const allQuizzes = DB.getKey('quizzes');
+                        
+                        const resultRows = allResults.slice().reverse().map(r => {
+                            const isPassed = r.passed !== undefined ? r.passed : (r.score >= 70); // Handle old data
+                            return `
+                            <tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="window.app.viewResult('${r.resultId}')" title="Click to view details">
+                                <td class="p-4 font-medium">${r.userName}</td>
+                                <td class="p-4 text-gray-600">${r.quizTitle}</td>
+                                <td class="p-4 font-bold ${isPassed ? 'text-green-600' : 'text-red-500'}">${r.score}%</td>
+                                <td class="p-4 text-sm text-gray-500">${new Date(r.date).toLocaleDateString()}</td>
+                                <td class="p-4 text-right text-gray-400"><i class="fas fa-chevron-right"></i></td>
+                            </tr>`;
+                        }).join('');
+
+                        const userRows = allUsers.map(u => {
+                            const assignments = (u.assigned || []).map(qId => {
+                                const q = allQuizzes.find(x => x.id === qId);
+                                if (!q) return '';
+                                const userResults = allResults.filter(r => r.userId === u.id && r.quizId === qId);
+                                const lastResult = userResults.length ? userResults[userResults.length - 1] : null;
+                                
+                                if (lastResult) {
+                                    const isPassed = lastResult.passed !== undefined ? lastResult.passed : (lastResult.score >= 70);
+                                    const color = isPassed ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200';
+                                    return `<span onclick="window.app.viewResult('${lastResult.resultId}'); event.stopPropagation();" class="cursor-pointer inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${color} mr-1 mb-1 hover:opacity-75" title="Click to view result">
+                                        ${q.title.substring(0, 10)}...: ${lastResult.score}%
+                                    </span>`;
+                                } else {
+                                    return `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200 mr-1 mb-1">
+                                        ${q.title.substring(0, 10)}... (Pending)
+                                    </span>`;
+                                }
+                            }).join('');
+
+                            return `
+                            <tr class="border-b hover:bg-gray-50">
+                                <td class="p-4 font-bold text-gray-800">${u.name}</td>
+                                <td class="p-4 text-gray-600 font-mono text-sm">${u.username}</td>
+                                <td class="p-4">
+                                    <div class="flex flex-wrap">${assignments || '<span class="text-gray-400 text-xs italic">No assignments</span>'}</div>
+                                </td>
+                                <td class="p-4 text-right">
+                                    <button onclick="window.app.editUser('${u.id}')" class="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-100">Manage</button>
+                                </td>
+                            </tr>
+                        `}).join('');
+
+                        container.innerHTML = `
+                            <div class="fade-in space-y-8">
+                                <div class="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-lg shadow-sm">
+                                    <div>
+                                        <h2 class="text-3xl font-bold text-gray-800">Admin Dashboard</h2>
+                                        <p class="text-gray-500">Manage users and assignments</p>
+                                    </div>
+                                    <div class="mt-4 md:mt-0 flex flex-col sm:flex-row gap-3">
+                                        <button onclick="window.app.render('dashboard')" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 font-medium transition">
+                                            <i class="fas fa-graduation-cap mr-2"></i> My Assessments
+                                        </button>
+                                        <button onclick="window.app.render('manageQuizzes')" class="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-50 font-medium transition">
+                                            <i class="fas fa-clipboard-list mr-2"></i> Manage Assessments
+                                        </button>
+                                        <button onclick="window.app.startCreateUser()" class="bg-lion-gold text-white px-6 py-2 rounded shadow hover:bg-yellow-600 font-bold transition">
+                                            <i class="fas fa-user-plus mr-2"></i> Create User
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="grid lg:grid-cols-3 gap-8">
+                                    <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden">
+                                        <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">
+                                            <i class="fas fa-users mr-2"></i> User Database & Assignments
+                                        </div>
+                                        <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                                            <table class="w-full text-left border-collapse">
+                                                <thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10">
+                                                    <tr><th class="p-4">Name</th><th class="p-4">User</th><th class="p-4">Assignments & Status</th><th class="p-4 text-right">Action</th></tr>
+                                                </thead>
+                                                <tbody>${userRows}</tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-white rounded-lg shadow overflow-hidden">
+                                        <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700 flex justify-between items-center">
+                                            <span><i class="fas fa-history mr-2"></i> History</span>
+                                        </div>
+                                        <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                                            <table class="w-full text-left border-collapse">
+                                                <thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10">
+                                                    <tr><th class="p-4">User</th><th class="p-4">Quiz</th><th class="p-4">Score</th><th class="p-4"></th></tr>
+                                                </thead>
+                                                <tbody>${resultRows || '<tr><td colspan="4" class="p-4 text-center text-gray-400">No data.</td></tr>'}</tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="text-center mt-12">
+                                     <button onclick="if(confirm('Reset all data?')) { localStorage.clear(); location.reload(); }" class="text-red-400 text-xs hover:text-red-600 underline">Reset System (Debug)</button>
+                                </div>
+                            </div>
+                        `;
+                        break;
+                    
+                    case 'manageQuizzes':
+                         if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
+                         const quizzesList = DB.getKey('quizzes');
+                         const usersList = DB.getKey('users');
+
+                         const quizRows = quizzesList.map(q => {
+                             const count = usersList.filter(u => (u.assigned || []).includes(q.id)).length;
+                             return `
+                                <tr class="border-b hover:bg-gray-50">
+                                    <td class="p-4 font-bold text-gray-800">${q.title}</td>
+                                    <td class="p-4 text-gray-600">${q.questions.length} in Bank</td>
+                                    <td class="p-4 text-gray-600">Displays ${q.displayCount || 'All'}</td>
+                                    <td class="p-4 text-gray-600">${count} Users</td>
+                                    <td class="p-4 text-right">
+                                        <button onclick="window.app.editQuiz(${q.id})" class="text-blue-600 hover:text-blue-800 mr-4"><i class="fas fa-edit"></i> Edit</button>
+                                        <button onclick="window.app.deleteQuiz(${q.id})" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i> Delete</button>
+                                    </td>
+                                </tr>
+                             `;
+                         }).join('');
+
+                         container.innerHTML = `
+                            <div class="max-w-4xl mx-auto fade-in">
+                                <div class="flex justify-between items-center mb-6">
+                                    <h2 class="text-3xl font-bold text-gray-800">Assessments</h2>
+                                    <div>
+                                        <button onclick="window.app.render('adminDashboard')" class="text-gray-500 mr-4 hover:text-gray-800">Back to Dashboard</button>
+                                        <button onclick="window.app.startCreateQuiz()" class="bg-lion-gold text-white px-6 py-2 rounded shadow hover:bg-yellow-600 font-bold transition">
+                                            + Create New Assessment
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="bg-white rounded-lg shadow overflow-hidden">
+                                    <table class="w-full text-left border-collapse">
+                                        <thead class="bg-gray-100 text-gray-600 text-xs uppercase">
+                                            <tr><th class="p-4">Title</th><th class="p-4">Bank Size</th><th class="p-4">Settings</th><th class="p-4">Assigned To</th><th class="p-4 text-right">Actions</th></tr>
+                                        </thead>
+                                        <tbody>
+                                            ${quizRows || '<tr><td colspan="5" class="p-6 text-center text-gray-500">No assessments found.</td></tr>'}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                         `;
+                        break;
+                    
+                    case 'quizForm':
+                        if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
+                        
+                        const isEditQuiz = !!App.editingQuiz;
+                        const q = App.editingQuiz || { title: '', desc: '', questions: [], displayCount: 5, passMark: 4 };
+                        
+                        if (!isEditQuiz && q.questions.length === 0) {
+                            q.questions.push({ q: '', options: ['', '', '', ''], ans: 0, explain: '' });
+                        }
+
+                        const renderQuestions = () => {
+                            return q.questions.map((quest, idx) => {
+                                const opts = quest.options;
+                                while(opts.length < 4) opts.push('');
+
+                                return `
+                                    <div class="question-block bg-gray-50 p-6 rounded border border-gray-200 mb-6 relative">
+                                        <div class="absolute top-4 right-4 text-red-400 hover:text-red-600 cursor-pointer" onclick="this.closest('.question-block').remove(); window.app.updateQuizCounts();" title="Remove Question"><i class="fas fa-trash"></i></div>
+                                        <div class="mb-4">
+                                            <label class="block text-gray-700 text-sm font-bold mb-2">Question ${idx+1}</label>
+                                            <input type="text" class="q-text w-full p-3 border border-gray-300 rounded focus:border-lion-gold" value="${quest.q}" placeholder="Enter question text here..." required>
+                                        </div>
+                                        <div class="grid md:grid-cols-2 gap-4 mb-4">
+                                            ${opts.map((opt, optIdx) => `
+                                                <div class="flex items-center">
+                                                    <input type="radio" name="ans_radio_${idx}" value="${optIdx}" ${quest.ans === optIdx ? 'checked' : ''} class="mr-2 h-4 w-4 text-lion-gold focus:ring-lion-gold">
+                                                    <input type="text" class="q-opt w-full p-2 border border-gray-300 rounded text-sm focus:border-lion-gold" value="${opt}" placeholder="Option ${optIdx+1}" required>
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 text-xs font-bold mb-1">Explanation (shown after completion)</label>
+                                            <textarea class="q-explain w-full p-2 border border-gray-300 rounded text-sm focus:border-lion-gold" rows="2" placeholder="Explain why the correct answer is correct...">${quest.explain || ''}</textarea>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('');
+                        };
+
+                        container.innerHTML = `
+                            <div class="max-w-4xl mx-auto mt-6 bg-white p-8 rounded-xl shadow-xl fade-in border-t-4 border-lion-gold">
+                                <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">${isEditQuiz ? 'Edit Assessment' : 'Create New Assessment'}</h2>
+                                <form onsubmit="window.app.handleSaveQuiz(event)">
+                                    <div class="grid md:grid-cols-2 gap-6 mb-6">
+                                        <div class="md:col-span-2">
+                                            <label class="block text-gray-700 text-sm font-bold mb-2">Assessment Title</label>
+                                            <input type="text" id="quizTitle" value="${q.title}" required class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold text-lg font-bold" placeholder="e.g. Fire Safety 101">
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-gray-700 text-sm font-bold mb-2">Description</label>
+                                            <input type="text" id="quizDesc" value="${q.desc}" required class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold" placeholder="Brief description of the content...">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="bg-blue-50 border border-blue-200 p-4 rounded mb-8">
+                                        <h3 class="font-bold text-blue-800 mb-3"><i class="fas fa-sliders-h mr-2"></i> Assessment Settings</h3>
+                                        <div class="grid md:grid-cols-2 gap-6">
+                                            <div>
+                                                <label class="block text-gray-700 text-sm font-bold mb-1">Questions to Display</label>
+                                                <input type="number" id="quizDisplayCount" value="${q.displayCount || q.questions.length}" min="1" class="w-full p-2 border border-gray-300 rounded" required>
+                                                <p class="text-xs text-gray-500 mt-1">From the pool below, how many to show per attempt?</p>
+                                            </div>
+                                            <div>
+                                                <label class="block text-gray-700 text-sm font-bold mb-1">Pass Mark (Number of Correct Answers)</label>
+                                                <input type="number" id="quizPassMark" value="${q.passMark || Math.ceil((q.questions.length || 1) * 0.7)}" min="1" class="w-full p-2 border border-gray-300 rounded" required>
+                                                <p class="text-xs text-gray-500 mt-1">E.g., 8 correct to pass.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <h3 class="font-bold text-gray-800 mb-4 border-b pb-1">Question Bank <span id="qBankCount" class="text-sm font-normal text-gray-500 ml-2">(${q.questions.length} questions)</span></h3>
+                                    <div id="questions-container">
+                                        ${renderQuestions()}
+                                    </div>
+
+                                    <div class="mb-8">
+                                        <button type="button" onclick="window.app.addQuestionHTML()" class="text-lion-gold hover:text-yellow-600 font-bold border border-lion-gold rounded px-4 py-2 text-sm border-dashed hover:bg-yellow-50 w-full">+ Add Question to Bank</button>
+                                    </div>
+
+                                    <div class="flex justify-between items-center pt-4 border-t">
+                                        <button type="button" onclick="window.app.render('manageQuizzes')" class="text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
+                                        <button type="submit" class="bg-lion-gold hover:bg-yellow-600 text-white font-bold py-3 px-8 rounded shadow transition">
+                                            ${isEditQuiz ? 'Save Changes' : 'Create Assessment'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        `;
+                        break;
+                        
+                    case 'userForm':
+                        if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
+                        // ... (same as previous userForm logic) ...
+                         const isEdit = !!App.editingUser;
+                        const u = App.editingUser || { name: '', username: '', pin: '', role: 'learner', assigned: [] };
+                        const allQ = DB.getKey('quizzes');
+                        
+                        // Render assigned tags
+                        const assignedIds = u.assigned || [];
+                        const assignedTags = assignedIds.map(id => {
+                            const q = allQ.find(x => x.id === id);
+                            if(!q) return '';
+                            return `<div class="bg-blue-50 border border-blue-200 text-blue-800 rounded px-3 py-1 flex items-center gap-2" data-id="${id}">
+                                <span class="text-sm font-medium">${q.title}</span>
+                                <button type="button" onclick="this.parentElement.remove()" class="text-blue-400 hover:text-blue-600 focus:outline-none" title="Remove"><i class="fas fa-times"></i></button>
+                            </div>`;
+                        }).join('');
+
+                        // Generate Custom Dropdown Items
+                        const dropdownItems = allQ.map(q => `
+                            <div onclick="window.app.addAssignment(${q.id})" data-search="${q.title.toLowerCase()}" class="quiz-option p-3 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 border-gray-100 transition">
+                                <div class="font-medium text-gray-800">${q.title}</div>
+                                <div class="text-xs text-gray-500 truncate">${q.desc || ''}</div>
+                            </div>
+                        `).join('');
+
+                        container.innerHTML = `
+                            <div class="max-w-2xl mx-auto mt-10 bg-white p-8 rounded-xl shadow-xl fade-in border-t-4 border-lion-gold">
+                                <h2 class="text-2xl font-bold mb-6 text-gray-800 border-b pb-2">${isEdit ? 'Manage User' : 'Create New User'}</h2>
+                                <form onsubmit="window.app.handleSaveUser(event)">
+                                    <div class="grid md:grid-cols-2 gap-6 mb-6">
+                                        <div>
+                                            <label class="block text-gray-700 text-sm font-bold mb-2">Full Name</label>
+                                            <input type="text" id="formName" value="${u.name}" required class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold" placeholder="e.g. Sarah Connor">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 text-sm font-bold mb-2">Username</label>
+                                            <input type="text" id="formUsername" value="${u.username || ''}" required class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold" placeholder="e.g. sarahc">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 text-sm font-bold mb-2">PIN</label>
+                                            <input type="text" id="formPin" value="${u.pin}" maxlength="4" pattern="[0-9]{4}" title="4 digit PIN" required placeholder="e.g. 9999" class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold font-mono tracking-widest text-center">
+                                        </div>
+                                        <div>
+                                            <label class="block text-gray-700 text-sm font-bold mb-2">Role</label>
+                                            <select id="formRole" class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold bg-white">
+                                                <option value="learner" ${u.role === 'learner' ? 'selected' : ''}>Learner</option>
+                                                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mb-6 border-t pt-4">
+                                        <label class="block text-gray-700 text-sm font-bold mb-3">Assignments</label>
+                                        
+                                        <div id="assigned-container" class="flex flex-wrap gap-2 mb-4 min-h-[40px] p-2 bg-gray-50 rounded border border-gray-200">
+                                            ${assignedTags}
+                                        </div>
+
+                                        <div class="flex gap-2 relative group" id="quizInputContainer">
+                                            <div class="relative flex-grow">
+                                                <input type="text" id="quizInput" 
+                                                    oninput="window.app.filterQuizzes()" 
+                                                    onfocus="window.app.showQuizDropdown()"
+                                                    class="w-full p-3 border border-gray-300 rounded focus:outline-none focus:border-lion-gold" 
+                                                    placeholder="Click to select or type to search..." autocomplete="off">
+                                                
+                                                <div id="quizDropdown" class="hidden absolute z-20 w-full bg-white border border-gray-300 mt-1 max-h-60 overflow-y-auto shadow-xl rounded-md">
+                                                    ${dropdownItems}
+                                                </div>
+                                            </div>
+                                            <button type="button" onclick="window.app.addAssignment()" class="bg-gray-800 text-white px-4 py-2 rounded hover:bg-gray-700 h-[50px]">Assign</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="flex justify-between items-center pt-4 border-t">
+                                        <button type="button" onclick="window.app.render('adminDashboard')" class="text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
+                                        <button type="submit" class="bg-lion-gold hover:bg-yellow-600 text-white font-bold py-2 px-8 rounded shadow transition">
+                                            ${isEdit ? 'Save Changes' : 'Create User'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        `;
+                        break;
                 }
             },
 
             // --- ACTIONS ---
-            actions: {
-                loadView: (viewName, param) => {
-                    document.getElementById('app-container').innerHTML = app.views[viewName](param);
-                },
 
-                login: () => {
-                    const pin = document.getElementById('pinInput').value;
-                    const users = DB.get('users');
-                    const user = users.find(u => u.pin === pin);
-                    if (user) {
-                        app.currentUser = user;
-                        app.actions.loadView('dashboard');
+            handleLogin: () => {
+                const usernameInput = document.getElementById('loginUsername').value.trim();
+                const pinInput = document.getElementById('loginPin').value.trim();
+                
+                const users = DB.getKey('users');
+                const user = users.find(u => u.username.toLowerCase() === usernameInput.toLowerCase() && u.pin === pinInput);
+                
+                if (user) {
+                    App.currentUser = user;
+                    if (user.role === 'admin') {
+                        App.render('adminDashboard');
                     } else {
-                        alert('Invalid PIN');
+                        App.render('dashboard');
                     }
-                },
+                } else {
+                    alert('Invalid Login.\nPlease check Username and PIN.');
+                }
+            },
 
-                startQuiz: (id) => {
-                    app.actions.loadView('quiz', id);
-                },
+            logout: () => {
+                App.currentUser = null;
+                App.currentQuizSession = null;
+                App.render('login');
+            },
 
-                submitQuiz: (quizId) => {
-                    const quiz = DB.get('quizzes').find(q => q.id === quizId);
-                    const form = document.getElementById('quizForm');
-                    const formData = new FormData(form);
-                    
-                    let score = 0;
-                    quiz.questions.forEach((q, idx) => {
-                        const answer = formData.get(`q${idx}`);
-                        if (answer && parseInt(answer) === q.ans) score++;
-                    });
+            startCreateUser: () => {
+                App.editingUser = null; 
+                App.render('userForm');
+            },
 
-                    const percentage = Math.round((score / quiz.questions.length) * 100);
+            editUser: (userId) => {
+                const users = DB.getKey('users');
+                const user = users.find(u => u.id === userId);
+                if (user) {
+                    App.editingUser = user;
+                    App.render('userForm');
+                }
+            },
+            
+            viewResult: (resultId) => {
+                App.render('quizResults', resultId);
+            },
+            
+            // Dropdown Helpers
+            showQuizDropdown: () => {
+                const dd = document.getElementById('quizDropdown');
+                if(dd) dd.classList.remove('hidden');
+            },
+            
+            filterQuizzes: () => {
+                const input = document.getElementById('quizInput').value.toLowerCase();
+                const items = document.querySelectorAll('.quiz-option');
+                let hasVisible = false;
+                
+                items.forEach(item => {
+                    const text = item.dataset.search;
+                    if(text.includes(input)) {
+                        item.classList.remove('hidden');
+                        hasVisible = true;
+                    } else {
+                        item.classList.add('hidden');
+                    }
+                });
+                
+                const dd = document.getElementById('quizDropdown');
+                if(dd) {
+                    if(hasVisible) dd.classList.remove('hidden');
+                    else dd.classList.add('hidden');
+                }
+            },
 
-                    // Save Result
-                    const result = {
-                        userName: app.currentUser.name,
-                        quizTitle: quiz.title,
-                        score: percentage,
-                        date: new Date().toISOString()
-                    };
-                    
-                    const results = DB.get('results');
-                    results.push(result);
-                    DB.set('results', results);
+            addAssignment: (id = null) => {
+                let quiz = null;
+                const allQ = DB.getKey('quizzes');
 
-                    // Email Trigger (Simulated)
-                    app.actions.sendEmail(result);
-
-                    alert(`Assessment Complete! Score: ${percentage}%`);
-                    app.actions.loadView('dashboard');
-                },
-
-                authAdmin: () => {
-                    const pass = document.getElementById('adminPass').value;
-                    if(pass === 'admin') app.actions.loadView('adminDashboard');
-                    else alert('Incorrect Password');
-                },
-
-                createUser: () => {
-                    const name = prompt("Enter User Name:");
-                    if(!name) return;
-                    const pin = Math.floor(1000 + Math.random() * 9000).toString();
-                    const newUser = { name: name, pin: pin, assigned: [1] }; // Default assign quiz 1
-                    
-                    const users = DB.get('users');
-                    users.push(newUser);
-                    DB.set('users', users);
-                    app.actions.loadView('adminDashboard');
-                    alert(`User Created!\nName: ${name}\nPIN: ${pin}`);
-                },
-
-                sendEmail: (data) => {
-                    // MOCK EMAIL - Log to console
-                    console.log("SENDING EMAIL:", data);
-                    
-                    // REAL EMAIL INTEGRATION:
-                    if(typeof emailjs !== 'undefined' && EMAIL_CONFIG.serviceID !== "YOUR_SERVICE_ID") {
-                       emailjs.send(EMAIL_CONFIG.serviceID, EMAIL_CONFIG.templateID, {
-                           to_name: "Admin",
-                           from_name: data.userName,
-                           message: `Completed ${data.quizTitle} with a score of ${data.score}%`
-                       });
+                if (id) {
+                    quiz = allQ.find(q => q.id === id);
+                } else {
+                    const title = document.getElementById('quizInput').value;
+                    if(!title) return;
+                    quiz = allQ.find(q => q.title.toLowerCase() === title.toLowerCase());
+                    if(!quiz) {
+                        quiz = allQ.find(q => q.title.toLowerCase().includes(title.toLowerCase()));
                     }
                 }
+                
+                if(!quiz) {
+                    alert("Assessment not found. Please select from the list.");
+                    return;
+                }
+                
+                const container = document.getElementById('assigned-container');
+                const existing = container.querySelectorAll(`[data-id="${quiz.id}"]`);
+                if(existing.length > 0) {
+                    if(!id) alert("This assessment is already assigned.");
+                    document.getElementById('quizInput').value = '';
+                    document.getElementById('quizDropdown').classList.add('hidden');
+                    return;
+                }
+                
+                const tag = document.createElement('div');
+                tag.className = "bg-blue-50 border border-blue-200 text-blue-800 rounded px-3 py-1 flex items-center gap-2";
+                tag.dataset.id = quiz.id;
+                tag.innerHTML = `
+                    <span class="text-sm font-medium">${quiz.title}</span>
+                    <button type="button" onclick="this.parentElement.remove()" class="text-blue-400 hover:text-blue-600 focus:outline-none"><i class="fas fa-times"></i></button>
+                `;
+                container.appendChild(tag);
+                
+                const input = document.getElementById('quizInput');
+                input.value = '';
+                input.focus();
+                document.getElementById('quizDropdown').classList.add('hidden');
+            },
+
+            handleSaveUser: (e) => {
+                if (e) e.preventDefault();
+                
+                const name = document.getElementById('formName').value.trim();
+                const username = document.getElementById('formUsername').value.trim();
+                const pin = document.getElementById('formPin').value.trim();
+                const role = document.getElementById('formRole').value;
+                
+                const assignedDivs = document.querySelectorAll('#assigned-container > div');
+                const assigned = Array.from(assignedDivs).map(div => parseInt(div.dataset.id));
+
+                if (!name || !pin || !username) return;
+
+                const users = DB.getKey('users');
+
+                if (App.editingUser) {
+                    const index = users.findIndex(u => u.id === App.editingUser.id);
+                    if (index !== -1) {
+                        users[index].name = name;
+                        users[index].username = username;
+                        users[index].pin = pin;
+                        users[index].role = role;
+                        users[index].assigned = assigned;
+                        DB.setKey('users', users);
+                        alert('User saved successfully.');
+                    }
+                } else {
+                    const duplicate = users.find(u => u.username.toLowerCase() === username.toLowerCase());
+                    if (duplicate) {
+                         alert('Warning: That username is already taken.');
+                         return;
+                    }
+
+                    const id = 'u' + Date.now();
+                    users.push({ id, name, username, pin, role, assigned, completed: [] });
+                    DB.setKey('users', users);
+                    alert(`User ${name} created.`);
+                }
+                
+                App.editingUser = null;
+                App.render('adminDashboard');
+            },
+
+            startQuiz: (quizId) => {
+                const quiz = DB.getKey('quizzes').find(q => q.id === quizId);
+                if (!quiz) return;
+
+                // RANDOMIZATION LOGIC
+                // 1. Copy questions
+                const pool = [...quiz.questions];
+                
+                // 2. Shuffle
+                for (let i = pool.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [pool[i], pool[j]] = [pool[j], pool[i]];
+                }
+                
+                // 3. Select Subset
+                const displayCount = quiz.displayCount || pool.length;
+                const selectedQuestions = pool.slice(0, displayCount);
+                
+                // 4. Determine Pass Mark
+                const passMark = quiz.passMark || Math.ceil(selectedQuestions.length * 0.7);
+
+                // 5. Create Session
+                App.currentQuizSession = {
+                    quizId: quiz.id,
+                    title: quiz.title,
+                    questions: selectedQuestions,
+                    passMark: passMark
+                };
+
+                App.render('quiz');
+            },
+
+            submitQuiz: () => {
+                const session = App.currentQuizSession;
+                if(!session) return;
+                
+                const form = document.getElementById('quizForm');
+                const formData = new FormData(form);
+                
+                let correctCount = 0;
+                let total = session.questions.length;
+                
+                // Create snapshot of questions with user's answer embedded
+                // This ensures we save the exact state of this randomized attempt
+                const snapshot = session.questions.map((q, idx) => {
+                    const val = formData.get(`q_${idx}`);
+                    const userAns = val ? parseInt(val) : -1;
+                    
+                    if (userAns === q.ans) correctCount++;
+                    
+                    return {
+                        ...q,
+                        userAns: userAns
+                    };
+                });
+
+                const score = Math.round((correctCount / total) * 100);
+                const passed = correctCount >= session.passMark;
+                
+                const resultId = 'r' + Date.now();
+                const newResult = {
+                    resultId: resultId,
+                    userId: App.currentUser.id,
+                    userName: App.currentUser.name,
+                    quizId: session.quizId,
+                    quizTitle: session.title,
+                    score: score,
+                    passed: passed,
+                    snapshot: snapshot, // Saving full snapshot instead of just answer indices
+                    date: new Date().toISOString()
+                };
+
+                const results = DB.getKey('results');
+                results.push(newResult);
+                DB.setKey('results', results);
+
+                console.log("Assessment Finished. Email payload:", newResult);
+                
+                App.render('quizResults', resultId);
+            },
+
+            // --- QUIZ EDITOR FUNCTIONS ---
+            
+            startCreateQuiz: () => {
+                App.editingQuiz = null;
+                App.render('quizForm');
+            },
+
+            editQuiz: (id) => {
+                const quizzes = DB.getKey('quizzes');
+                const quiz = quizzes.find(q => q.id === id);
+                if (quiz) {
+                    App.editingQuiz = quiz;
+                    App.render('quizForm');
+                }
+            },
+
+            deleteQuiz: (id) => {
+                if(!confirm("Are you sure? This will delete the assessment and remove it from all assigned users.")) return;
+                
+                let quizzes = DB.getKey('quizzes');
+                quizzes = quizzes.filter(q => q.id !== id);
+                DB.setKey('quizzes', quizzes);
+
+                const users = DB.getKey('users');
+                let updated = false;
+                users.forEach(u => {
+                    if (u.assigned && u.assigned.includes(id)) {
+                        u.assigned = u.assigned.filter(aid => aid !== id);
+                        updated = true;
+                    }
+                });
+                if(updated) DB.setKey('users', users);
+
+                App.render('manageQuizzes');
+            },
+
+            addQuestionHTML: () => {
+                const container = document.getElementById('questions-container');
+                const idx = container.querySelectorAll('.question-block').length;
+                
+                const div = document.createElement('div');
+                div.className = "question-block bg-gray-50 p-6 rounded border border-gray-200 mb-6 relative fade-in";
+                div.innerHTML = `
+                    <div class="absolute top-4 right-4 text-red-400 hover:text-red-600 cursor-pointer" onclick="this.closest('.question-block').remove(); window.app.updateQuizCounts();" title="Remove Question"><i class="fas fa-trash"></i></div>
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Question (New)</label>
+                        <input type="text" class="q-text w-full p-3 border border-gray-300 rounded focus:border-lion-gold" placeholder="Enter question text here..." required>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-4 mb-4">
+                        <div class="flex items-center">
+                            <input type="radio" name="ans_radio_new_${Date.now()}_${idx}" value="0" checked class="mr-2 h-4 w-4 text-lion-gold focus:ring-lion-gold">
+                            <input type="text" class="q-opt w-full p-2 border border-gray-300 rounded text-sm focus:border-lion-gold" placeholder="Option 1" required>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" name="ans_radio_new_${Date.now()}_${idx}" value="1" class="mr-2 h-4 w-4 text-lion-gold focus:ring-lion-gold">
+                            <input type="text" class="q-opt w-full p-2 border border-gray-300 rounded text-sm focus:border-lion-gold" placeholder="Option 2" required>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" name="ans_radio_new_${Date.now()}_${idx}" value="2" class="mr-2 h-4 w-4 text-lion-gold focus:ring-lion-gold">
+                            <input type="text" class="q-opt w-full p-2 border border-gray-300 rounded text-sm focus:border-lion-gold" placeholder="Option 3" required>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="radio" name="ans_radio_new_${Date.now()}_${idx}" value="3" class="mr-2 h-4 w-4 text-lion-gold focus:ring-lion-gold">
+                            <input type="text" class="q-opt w-full p-2 border border-gray-300 rounded text-sm focus:border-lion-gold" placeholder="Option 4" required>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 text-xs font-bold mb-1">Explanation</label>
+                        <textarea class="q-explain w-full p-2 border border-gray-300 rounded text-sm focus:border-lion-gold" rows="2" placeholder="Explain why the correct answer is correct..."></textarea>
+                    </div>
+                `;
+                container.appendChild(div);
+                window.app.updateQuizCounts();
+            },
+            
+            updateQuizCounts: () => {
+                // Update the "Bank Size" display text in form
+                const qLen = document.querySelectorAll('.question-block').length;
+                const label = document.getElementById('qBankCount');
+                if(label) label.textContent = `(${qLen} questions)`;
+            },
+
+            handleSaveQuiz: (e) => {
+                e.preventDefault();
+                const title = document.getElementById('quizTitle').value.trim();
+                const desc = document.getElementById('quizDesc').value.trim();
+                const displayCount = parseInt(document.getElementById('quizDisplayCount').value);
+                const passMark = parseInt(document.getElementById('quizPassMark').value);
+                
+                const qBlocks = document.querySelectorAll('.question-block');
+                if (qBlocks.length === 0) return alert("Please add at least one question.");
+                
+                if (displayCount > qBlocks.length) return alert(`You cannot display ${displayCount} questions when the bank only has ${qBlocks.length}.`);
+                if (passMark > displayCount) return alert(`Pass mark (${passMark}) cannot be higher than the number of questions displayed (${displayCount}).`);
+
+                const questions = [];
+                let hasError = false;
+
+                qBlocks.forEach((block, idx) => {
+                    const qText = block.querySelector('.q-text').value.trim();
+                    if(!qText) hasError = true;
+                    
+                    const opts = Array.from(block.querySelectorAll('.q-opt')).map(i => i.value.trim());
+                    if(opts.some(o => !o)) hasError = true;
+
+                    const ansRadio = block.querySelector('input[type="radio"]:checked');
+                    const ans = ansRadio ? parseInt(ansRadio.value) : 0;
+                    
+                    const explain = block.querySelector('.q-explain').value.trim();
+                    
+                    questions.push({ q: qText, options: opts, ans, explain });
+                });
+
+                if(hasError) return alert("Please fill in all Question and Option fields.");
+
+                let quizzes = DB.getKey('quizzes');
+                
+                if (App.editingQuiz) {
+                    const idx = quizzes.findIndex(q => q.id === App.editingQuiz.id);
+                    if(idx !== -1) {
+                        quizzes[idx].title = title;
+                        quizzes[idx].desc = desc;
+                        quizzes[idx].questions = questions;
+                        quizzes[idx].displayCount = displayCount;
+                        quizzes[idx].passMark = passMark;
+                        DB.setKey('quizzes', quizzes);
+                    }
+                } else {
+                    const id = Date.now(); 
+                    quizzes.push({ id, title, desc, questions, displayCount, passMark });
+                    DB.setKey('quizzes', quizzes);
+                }
+
+                App.editingQuiz = null;
+                App.render('manageQuizzes');
+                alert("Assessment Saved Successfully!");
             }
         };
 
-        // Start App
-        app.init();
+        window.app = App;
+        window.onload = () => window.app.init();
+
     </script>
 </body>
 </html>
