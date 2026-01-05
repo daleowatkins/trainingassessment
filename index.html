@@ -6,6 +6,8 @@
     <title>Country Lion Training Assessment</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- EmailJS -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     
@@ -85,6 +87,14 @@
             appId: "1:700097828470:web:95a92b50b3a0ca59ebb157"
         };
 
+        // --- EMAILJS CONFIGURATION ---
+        // Register at emailjs.com to get these keys for free
+        const emailConfig = {
+            serviceID: "YOUR_SERVICE_ID",
+            templateID: "YOUR_TEMPLATE_ID", 
+            publicKey: "zt6NEchi0KdWgUqJ9"
+        };
+
         // Initialize Firebase
         let db;
         try {
@@ -105,8 +115,8 @@
 
                 console.log("Seeding default data...");
                 const defaultUsers = [
-                    { id: 'u1', name: "John Doe", username: "jdoe", pin: "1234", role: 'learner', assigned: [1, 2] },
-                    { id: 'u_admin', name: "System Admin", username: "admin", pin: "0000", role: 'admin', assigned: [1, 2] }
+                    { id: 'u1', name: "John Doe", username: "jdoe", pin: "1234", email: "john@example.com", role: 'learner', assigned: [1, 2] },
+                    { id: 'u_admin', name: "System Admin", username: "admin", pin: "0000", email: "admin@example.com", role: 'admin', assigned: [1, 2] }
                 ];
                 const defaultQuizzes = [
                     { 
@@ -162,7 +172,11 @@
             editingQuiz: null,
 
             init: async () => {
-                // window.app = App; // REMOVED from here
+                // Initialize EmailJS if keys are provided
+                if (emailConfig.publicKey !== "YOUR_PUBLIC_KEY" && window.emailjs) {
+                    emailjs.init(emailConfig.publicKey);
+                }
+
                 App.showLoader(true);
                 try {
                     await DB.seedDefaults();
@@ -356,7 +370,7 @@
                         case 'userForm':
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const isEdit = !!App.editingUser;
-                            const u = App.editingUser || { name: '', username: '', pin: '', role: 'learner', assigned: [] };
+                            const u = App.editingUser || { name: '', username: '', pin: '', email: '', role: 'learner', assigned: [] };
                             const formQuizzes = await DB.getAll("quizzes");
                             
                             const assignedTags = (u.assigned || []).map(id => {
@@ -365,12 +379,18 @@
                             }).join('');
                             const ddItems = formQuizzes.map(q => `<div onclick="window.app.addAssignment(${q.id})" data-search="${q.title.toLowerCase()}" class="quiz-option p-3 hover:bg-gray-100 cursor-pointer border-b">${q.title}</div>`).join('');
 
+                            // Send Invite Button (Only in Edit mode)
+                            const sendInviteBtn = isEdit 
+                                ? `<button type="button" onclick="window.app.sendAssessmentInvite()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow transition mr-auto flex items-center"><i class="fas fa-envelope mr-2"></i> Send Assessments via Email</button>`
+                                : '';
+
                             container.innerHTML = `
                                 <div class="max-w-2xl mx-auto mt-10 bg-white p-8 rounded-xl shadow-xl fade-in border-t-4 border-lion-gold">
                                     <h2 class="text-2xl font-bold mb-6 text-gray-800">${isEdit ? 'Manage User' : 'Create New User'}</h2>
                                     <form onsubmit="window.app.handleSaveUser(event)">
                                         <div class="grid md:grid-cols-2 gap-6 mb-6">
                                             <div><label class="block text-gray-700 text-sm font-bold mb-2">Name</label><input type="text" id="formName" value="${u.name}" required class="w-full p-3 border border-gray-300 rounded"></div>
+                                            <div><label class="block text-gray-700 text-sm font-bold mb-2">Email Address</label><input type="email" id="formEmail" value="${u.email || ''}" placeholder="user@company.com" class="w-full p-3 border border-gray-300 rounded"></div>
                                             <div><label class="block text-gray-700 text-sm font-bold mb-2">Username</label><input type="text" id="formUsername" value="${u.username || ''}" required class="w-full p-3 border border-gray-300 rounded"></div>
                                             <div><label class="block text-gray-700 text-sm font-bold mb-2">PIN</label><input type="text" id="formPin" value="${u.pin}" maxlength="4" class="w-full p-3 border border-gray-300 rounded text-center"></div>
                                             <div><label class="block text-gray-700 text-sm font-bold mb-2">Role</label><select id="formRole" class="w-full p-3 border border-gray-300 rounded"><option value="learner" ${u.role === 'learner'?'selected':''}>Learner</option><option value="admin" ${u.role === 'admin'?'selected':''}>Admin</option></select></div>
@@ -379,7 +399,13 @@
                                             <div id="assigned-container" class="flex flex-wrap gap-2 mb-4 min-h-[40px] p-2 bg-gray-50 rounded border border-gray-200">${assignedTags}</div>
                                             <div class="flex gap-2 relative" id="quizInputContainer"><input type="text" id="quizInput" oninput="window.app.filterQuizzes()" onfocus="window.app.showQuizDropdown()" class="w-full p-3 border border-gray-300 rounded" placeholder="Search assessments..."><div id="quizDropdown" class="hidden absolute z-20 w-full bg-white border border-gray-300 mt-1 max-h-60 overflow-y-auto shadow-xl rounded-md top-12">${ddItems}</div></div>
                                         </div>
-                                        <div class="flex justify-between pt-4 border-t"><button type="button" onclick="window.app.render('adminDashboard')" class="text-gray-500">Cancel</button><button type="submit" class="bg-lion-gold text-white font-bold py-2 px-8 rounded shadow">Save</button></div>
+                                        <div class="flex justify-between items-center pt-4 border-t">
+                                            ${sendInviteBtn}
+                                            <div class="flex ml-auto gap-3">
+                                                <button type="button" onclick="window.app.render('adminDashboard')" class="text-gray-500">Cancel</button>
+                                                <button type="submit" class="bg-lion-gold text-white font-bold py-2 px-8 rounded shadow">Save</button>
+                                            </div>
+                                        </div>
                                     </form>
                                 </div>`;
                             break;
@@ -493,23 +519,66 @@
                 e.preventDefault();
                 App.showLoader(true);
                 const name = document.getElementById('formName').value.trim();
+                const email = document.getElementById('formEmail').value.trim();
                 const username = document.getElementById('formUsername').value.trim();
                 const pin = document.getElementById('formPin').value.trim();
                 const role = document.getElementById('formRole').value;
                 const assigned = Array.from(document.querySelectorAll('#assigned-container > div')).map(d => parseInt(d.dataset.id));
 
                 if(App.editingUser) {
-                    await DB.save("users", { ...App.editingUser, name, username, pin, role, assigned });
+                    await DB.save("users", { ...App.editingUser, name, email, username, pin, role, assigned });
                 } else {
                     // Check duplicate
                     const q = query(collection(db, "users"), where("username", "==", username));
                     const snap = await getDocs(q);
                     if(!snap.empty) { alert("Username taken"); App.showLoader(false); return; }
-                    await DB.save("users", { id: 'u' + Date.now(), name, username, pin, role, assigned });
+                    await DB.save("users", { id: 'u' + Date.now(), name, email, username, pin, role, assigned });
                 }
                 alert("Saved!");
                 App.editingUser = null;
                 App.render('adminDashboard');
+            },
+
+            // --- EMAIL FUNCTION ---
+            sendAssessmentInvite: async () => {
+                if(emailConfig.publicKey === "YOUR_PUBLIC_KEY") {
+                    alert("EmailJS is not configured. Please add your keys to the code.");
+                    return;
+                }
+                
+                const user = App.editingUser;
+                const email = document.getElementById('formEmail').value.trim();
+                if(!user || !email) {
+                    alert("Please ensure the user has a valid email address saved.");
+                    return;
+                }
+
+                // Gather assignment details
+                App.showLoader(true);
+                const allQ = await DB.getAll("quizzes");
+                const assignedTitles = (user.assigned || []).map(id => {
+                    const q = allQ.find(x => x.id === id);
+                    return q ? `<li>${q.title}</li>` : '';
+                }).join('');
+
+                const templateParams = {
+                    to_name: user.name,
+                    to_email: email,
+                    username: user.username,
+                    pin: user.pin,
+                    app_link: window.location.href, // Current URL
+                    assessments_list: `<ul>${assignedTitles}</ul>`
+                };
+
+                try {
+                    await emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams);
+                    alert(`Email successfully sent to ${email}`);
+                } catch(err) {
+                    console.error("EmailJS Error:", err);
+                    alert("Failed to send email. Check console for details.");
+                } finally {
+                    App.showLoader(false);
+                }
             },
 
             startQuiz: async (id) => {
