@@ -36,6 +36,12 @@
             max-height: 200px;
             overflow-y: auto;
         }
+        
+        /* Modal Background */
+        .modal-overlay {
+            background-color: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(2px);
+        }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col">
@@ -60,15 +66,29 @@
         <div id="app">
             <!-- Content injected here -->
         </div>
+        
         <!-- Global Loading Overlay -->
-        <div id="global-loader" class="hidden absolute inset-0 bg-gray-50 bg-opacity-80 flex justify-center items-center z-50 h-full">
+        <div id="global-loader" class="hidden absolute inset-0 bg-gray-50 bg-opacity-80 flex justify-center items-center z-50 fixed h-full w-full">
             <div class="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12"></div>
+        </div>
+
+        <!-- CUSTOM MODAL OVERLAY -->
+        <div id="custom-modal" class="hidden fixed inset-0 modal-overlay z-50 flex items-center justify-center p-4">
+            <div class="bg-white rounded-lg shadow-2xl max-w-md w-full overflow-hidden fade-in transform scale-100">
+                <div class="p-6">
+                    <h3 id="modal-title" class="text-xl font-bold text-gray-900 mb-2">Confirm Action</h3>
+                    <p id="modal-text" class="text-gray-600 mb-6">Are you sure?</p>
+                    <div id="modal-buttons" class="flex justify-end space-x-3">
+                        <!-- Buttons injected here -->
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 
     <!-- FOOTER -->
     <footer class="bg-gray-800 text-gray-500 py-6 text-center text-sm mt-auto">
-        <p>&copy; 2026 Country Lion Training Assessment. Cloud Edition 3.0</p>
+        <p>&copy; 2026 Country Lion Training Assessment. Cloud Edition 3.4</p>
     </footer>
 
     <!-- JAVASCRIPT LOGIC -->
@@ -88,7 +108,6 @@
         };
 
         // --- EMAILJS CONFIGURATION ---
-        // Register at emailjs.com to get these keys for free
         const emailConfig = {
             serviceID: "service_b0zzpkb",
             templateID: "template_tq4tz6p", 
@@ -114,12 +133,12 @@
             // Seed default data if DB is empty
             seedDefaults: async () => {
                 const usersSnap = await getDocs(collection(db, "users"));
-                if (!usersSnap.empty) return; // Already has data
+                if (!usersSnap.empty) return; 
 
                 console.log("Seeding default data...");
                 const defaultUsers = [
-                    { id: 'u1', name: "John Doe", username: "jdoe", pin: "1234", email: "john@example.com", role: 'learner', assigned: [1, 2] },
-                    { id: 'u_admin', name: "System Admin", username: "admin", pin: "0000", email: "admin@example.com", role: 'admin', assigned: [1, 2] }
+                    { id: 'u1', name: "John Doe", username: "jdoe", pin: "1234", email: "john@example.com", role: 'learner', assigned: [1, 2], archived: false },
+                    { id: 'u_admin', name: "System Admin", username: "admin", pin: "0000", email: "admin@example.com", role: 'admin', assigned: [1, 2], archived: false }
                 ];
                 const defaultQuizzes = [
                     { 
@@ -158,7 +177,6 @@
             },
 
             save: async (collName, data) => {
-                // Ensure ID is string
                 await setDoc(doc(db, collName, String(data.id || data.resultId)), data);
             },
 
@@ -173,9 +191,9 @@
             currentQuizSession: null,
             editingUser: null,
             editingQuiz: null,
+            viewArchived: false,
 
             init: async () => {
-                // Initialize EmailJS if keys are provided
                 if (emailConfig.publicKey !== "YOUR_PUBLIC_KEY" && window.emailjs) {
                     emailjs.init(emailConfig.publicKey);
                 }
@@ -191,7 +209,6 @@
                     App.showLoader(false);
                 }
 
-                // Click outside listener for dropdown
                 window.addEventListener('click', (e) => {
                     const container = document.getElementById('quizInputContainer');
                     const dropdown = document.getElementById('quizDropdown');
@@ -205,6 +222,39 @@
                 const el = document.getElementById('global-loader');
                 if(show) el.classList.remove('hidden');
                 else el.classList.add('hidden');
+            },
+
+            // --- CUSTOM MODAL SYSTEM ---
+            showModal: (title, msg, isConfirm, onYes) => {
+                 const m = document.getElementById('custom-modal');
+                 document.getElementById('modal-title').textContent = title;
+                 document.getElementById('modal-text').textContent = msg;
+                 
+                 const btnContainer = document.getElementById('modal-buttons');
+                 btnContainer.innerHTML = ''; // Clear previous buttons
+                 
+                 if (isConfirm) {
+                     const yes = document.createElement('button');
+                     yes.className = "bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded transition";
+                     yes.textContent = "Yes, Proceed";
+                     yes.onclick = () => { m.classList.add('hidden'); if(onYes) onYes(); };
+                     
+                     const no = document.createElement('button');
+                     no.className = "bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded transition";
+                     no.textContent = "Cancel";
+                     no.onclick = () => m.classList.add('hidden');
+                     
+                     btnContainer.appendChild(no);
+                     btnContainer.appendChild(yes);
+                 } else {
+                     const ok = document.createElement('button');
+                     ok.className = "bg-lion-gold hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded transition";
+                     ok.textContent = "OK";
+                     ok.onclick = () => { m.classList.add('hidden'); if(onYes) onYes(); };
+                     btnContainer.appendChild(ok);
+                 }
+                 
+                 m.classList.remove('hidden');
             },
 
             updateNav: () => {
@@ -292,7 +342,7 @@
                         case 'quizResults':
                             const rId = data;
                             const res = await DB.getById("results", rId);
-                            if (!res) { alert("Result not found"); return App.render('dashboard'); }
+                            if (!res) { App.showModal("Error", "Result not found", false); return App.render('dashboard'); }
                             
                             let resHtml = '';
                             if (res.snapshot) {
@@ -332,7 +382,10 @@
                                     <td class="p-4 text-sm text-gray-500">${new Date(r.date).toLocaleDateString()}</td>
                                 </tr>`).join('');
 
-                            const uRows = aUsers.map(u => {
+                            const showArchived = App.viewArchived;
+                            const displayedUsers = aUsers.filter(u => !!u.archived === showArchived);
+
+                            const uRows = displayedUsers.map(u => {
                                 const assigns = (u.assigned || []).map(qId => {
                                     const q = aQuizzes.find(x => x.id === qId);
                                     if (!q) return '';
@@ -340,18 +393,39 @@
                                     const last = uRes.length ? uRes[uRes.length-1] : null;
                                     if(last) {
                                         const col = last.passed ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200';
-                                        return `<span onclick="window.app.viewResult('${last.resultId}'); event.stopPropagation();" class="cursor-pointer inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${col} mr-1 mb-1">${q.title.substring(0,10)}...: ${last.score}%</span>`;
+                                        return `<span onclick="event.stopPropagation(); window.app.viewResult('${last.resultId}')" class="cursor-pointer inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${col} mr-1 mb-1">${q.title.substring(0,10)}...: ${last.score}%</span>`;
                                     }
                                     return `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200 mr-1 mb-1">${q.title.substring(0,10)}...</span>`;
                                 }).join('');
-                                return `<tr class="border-b hover:bg-gray-50"><td class="p-4 font-bold text-gray-800">${u.name}</td><td class="p-4 text-gray-600 font-mono text-sm">${u.username}</td><td class="p-4 flex flex-wrap">${assigns || '-'}</td><td class="p-4 text-right"><button onclick="window.app.editUser('${u.id}')" class="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-100">Manage</button></td></tr>`;
+                                
+                                const archiveBtn = showArchived 
+                                    ? `<button type="button" onclick="window.app.restoreUser('${u.id}')" class="text-green-600 hover:text-green-800 text-sm ml-3 font-semibold"><i class="fas fa-trash-restore"></i> Restore</button>`
+                                    : `<button type="button" onclick="window.app.archiveUser('${u.id}')" class="text-orange-500 hover:text-orange-700 text-sm ml-3 font-semibold"><i class="fas fa-archive"></i> Archive</button>`;
+
+                                return `<tr class="border-b hover:bg-gray-50">
+                                    <td class="p-4 font-bold text-gray-800">${u.name}</td>
+                                    <td class="p-4 text-gray-600 font-mono text-sm">${u.username}</td>
+                                    <td class="p-4 flex flex-wrap">${assigns || '-'}</td>
+                                    <td class="p-4 text-right">
+                                        <button onclick="window.app.editUser('${u.id}')" class="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-100">Manage</button>
+                                        ${archiveBtn}
+                                    </td>
+                                </tr>`;
                             }).join('');
+
+                            const toggleBtnText = showArchived ? "Show Active Users" : "Show Archived Users";
+                            const toggleBtnColor = showArchived ? "bg-green-600 hover:bg-green-700" : "bg-gray-500 hover:bg-gray-600";
 
                             container.innerHTML = `
                                 <div class="fade-in space-y-8">
                                     <div class="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-lg shadow-sm"><div><h2 class="text-3xl font-bold text-gray-800">Admin Dashboard</h2><p class="text-gray-500">Cloud Database Active</p></div><div class="mt-4 md:mt-0 flex gap-3"><button onclick="window.app.render('dashboard')" class="bg-white border border-gray-300 px-4 py-2 rounded">My Assessments</button><button onclick="window.app.render('manageQuizzes')" class="bg-white border border-gray-300 px-4 py-2 rounded">Manage Assessments</button><button onclick="window.app.startCreateUser()" class="bg-lion-gold text-white px-6 py-2 rounded font-bold">+ Create User</button></div></div>
                                     <div class="grid lg:grid-cols-3 gap-8">
-                                        <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden"><div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">User Database</div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10"><tr><th class="p-4">Name</th><th class="p-4">User</th><th class="p-4">Status</th><th class="p-4">Action</th></tr></thead><tbody>${uRows}</tbody></table></div></div>
+                                        <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden">
+                                            <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700 flex justify-between items-center">
+                                                <span>${showArchived ? 'Archived Users' : 'Active User Database'}</span>
+                                                <button onclick="window.app.toggleArchivedView()" class="text-xs text-white px-3 py-1 rounded ${toggleBtnColor}">${toggleBtnText}</button>
+                                            </div>
+                                            <div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10"><tr><th class="p-4">Name</th><th class="p-4">User</th><th class="p-4">Status</th><th class="p-4 text-right">Action</th></tr></thead><tbody>${uRows || '<tr><td colspan="4" class="p-4 text-center text-gray-500">No users found in this view.</td></tr>'}</tbody></table></div></div>
                                         <div class="bg-white rounded-lg shadow overflow-hidden"><div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">History</div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10"><tr><th class="p-4">User</th><th class="p-4">Quiz</th><th class="p-4">Score</th></tr></thead><tbody>${resRows}</tbody></table></div></div>
                                     </div>
                                 </div>`;
@@ -382,10 +456,39 @@
                             }).join('');
                             const ddItems = formQuizzes.map(q => `<div onclick="window.app.addAssignment(${q.id})" data-search="${q.title.toLowerCase()}" class="quiz-option p-3 hover:bg-gray-100 cursor-pointer border-b">${q.title}</div>`).join('');
 
-                            // Send Invite Button (Only in Edit mode)
                             const sendInviteBtn = isEdit 
-                                ? `<button type="button" onclick="window.app.sendAssessmentInvite()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow transition mr-auto flex items-center"><i class="fas fa-envelope mr-2"></i> Send Assessments via Email</button>`
+                                ? `<button type="button" onclick="window.app.sendAssessmentInvite()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow transition mr-auto flex items-center"><i class="fas fa-envelope mr-2"></i> Send Email</button>`
                                 : '';
+                            
+                            const deleteUserBtn = isEdit
+                                ? `<button type="button" onclick="window.app.deleteUserAction('${u.id}')" class="text-red-500 hover:text-red-700 text-sm font-bold ml-4 border border-red-200 bg-red-50 px-3 py-2 rounded">Delete User</button>`
+                                : '';
+
+                            let historyHTML = '';
+                            if (isEdit) {
+                                const allResultsHist = await DB.getAll("results");
+                                const userHist = allResultsHist.filter(r => r.userId === u.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+                                const histRows = userHist.map(r => `
+                                    <tr class="border-b hover:bg-gray-50">
+                                        <td class="p-3 text-sm">${new Date(r.date).toLocaleString()}</td>
+                                        <td class="p-3 text-sm font-medium">${r.quizTitle}</td>
+                                        <td class="p-3 text-sm font-bold ${r.passed ? 'text-green-600' : 'text-red-600'}">${r.score}%</td>
+                                        <td class="p-3 text-sm"><button onclick="window.app.viewResult('${r.resultId}')" class="text-blue-600 hover:underline">View</button></td>
+                                    </tr>
+                                `).join('');
+                                
+                                historyHTML = `
+                                    <div class="mt-8 border-t pt-6">
+                                        <h3 class="font-bold text-gray-800 mb-4">Assessment History</h3>
+                                        <div class="bg-gray-50 rounded border border-gray-200 overflow-hidden">
+                                            <table class="w-full text-left">
+                                                <thead class="bg-gray-100 text-xs text-gray-600 uppercase border-b"><tr><th class="p-3">Date</th><th class="p-3">Assessment</th><th class="p-3">Score</th><th class="p-3">Report</th></tr></thead>
+                                                <tbody>${histRows || '<tr><td colspan="4" class="p-4 text-center text-gray-500 text-sm">No assessments completed yet.</td></tr>'}</tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                `;
+                            }
 
                             container.innerHTML = `
                                 <div class="max-w-2xl mx-auto mt-10 bg-white p-8 rounded-xl shadow-xl fade-in border-t-4 border-lion-gold">
@@ -403,13 +506,17 @@
                                             <div class="flex gap-2 relative" id="quizInputContainer"><input type="text" id="quizInput" oninput="window.app.filterQuizzes()" onfocus="window.app.showQuizDropdown()" class="w-full p-3 border border-gray-300 rounded" placeholder="Search assessments..."><div id="quizDropdown" class="hidden absolute z-20 w-full bg-white border border-gray-300 mt-1 max-h-60 overflow-y-auto shadow-xl rounded-md top-12">${ddItems}</div></div>
                                         </div>
                                         <div class="flex justify-between items-center pt-4 border-t">
-                                            ${sendInviteBtn}
+                                            <div class="flex items-center">
+                                                ${sendInviteBtn}
+                                                ${deleteUserBtn}
+                                            </div>
                                             <div class="flex ml-auto gap-3">
                                                 <button type="button" onclick="window.app.render('adminDashboard')" class="text-gray-500">Cancel</button>
                                                 <button type="submit" class="bg-lion-gold text-white font-bold py-2 px-8 rounded shadow">Save</button>
                                             </div>
                                         </div>
                                     </form>
+                                    ${historyHTML}
                                 </div>`;
                             break;
 
@@ -464,16 +571,20 @@
                 const uInput = document.getElementById('loginUsername').value.trim().toLowerCase();
                 const pInput = document.getElementById('loginPin').value.trim();
                 
-                // Query Firestore
                 const q = query(collection(db, "users"), where("username", "==", uInput), where("pin", "==", pInput));
                 const snap = await getDocs(q);
                 
                 App.showLoader(false);
                 if (!snap.empty) {
-                    App.currentUser = snap.docs[0].data();
+                    const userData = snap.docs[0].data();
+                    if(userData.archived) {
+                        App.showModal('Access Denied', 'This account has been archived. Please contact an administrator.', false);
+                        return;
+                    }
+                    App.currentUser = userData;
                     App.render(App.currentUser.role === 'admin' ? 'adminDashboard' : 'dashboard');
                 } else {
-                    alert('Invalid Login. Check Username and PIN.');
+                    App.showModal('Error', 'Invalid Login. Check Username and PIN.', false);
                 }
             },
 
@@ -484,6 +595,81 @@
             editUser: async (id) => {
                 const user = await DB.getById("users", id);
                 if(user) { App.editingUser = user; App.render('userForm'); }
+            },
+
+            toggleArchivedView: () => {
+                App.viewArchived = !App.viewArchived;
+                App.render('adminDashboard');
+            },
+
+            archiveUser: (id) => {
+                console.log("Archiving user:", id);
+                // Print to console to debug click
+                App.showModal(
+                    "Archive User?",
+                    "Are you sure you want to archive this user? They will not be able to login.",
+                    true,
+                    async () => {
+                        try {
+                            App.showLoader(true);
+                            const user = await DB.getById("users", id);
+                            if(user) {
+                                user.archived = true;
+                                await DB.save("users", user);
+                            }
+                            App.showLoader(false);
+                            App.render('adminDashboard');
+                        } catch(e) {
+                            console.error(e);
+                            App.showModal("Error", "Error archiving user: " + e.message, false);
+                            App.showLoader(false);
+                        }
+                    }
+                );
+            },
+
+            restoreUser: (id) => {
+                App.showModal(
+                    "Restore User?",
+                    "Are you sure you want to restore this user?",
+                    true,
+                    async () => {
+                        try {
+                            App.showLoader(true);
+                            const user = await DB.getById("users", id);
+                            if(user) {
+                                user.archived = false;
+                                await DB.save("users", user);
+                            }
+                            App.showLoader(false);
+                            App.render('adminDashboard');
+                        } catch(e) {
+                            console.error(e);
+                            App.showModal("Error", "Error restoring user: " + e.message, false);
+                            App.showLoader(false);
+                        }
+                    }
+                );
+            },
+
+            deleteUserAction: (id) => {
+                App.showModal(
+                    "Delete User?",
+                    "PERMANENT DELETE: This cannot be undone. Are you sure?",
+                    true,
+                    async () => {
+                        try {
+                            App.showLoader(true);
+                            await DB.delete("users", id);
+                            App.showLoader(false);
+                            App.render('adminDashboard');
+                        } catch(e) {
+                            console.error(e);
+                            App.showModal("Error", "Error deleting user: " + e.message, false);
+                            App.showLoader(false);
+                        }
+                    }
+                );
             },
 
             viewResult: (id) => { App.render('quizResults', id); },
@@ -534,32 +720,31 @@
                     // Check duplicate
                     const q = query(collection(db, "users"), where("username", "==", username));
                     const snap = await getDocs(q);
-                    if(!snap.empty) { alert("Username taken"); App.showLoader(false); return; }
-                    await DB.save("users", { id: 'u' + Date.now(), name, email, username, pin, role, assigned });
+                    if(!snap.empty) { App.showModal("Error", "Username taken", false); App.showLoader(false); return; }
+                    await DB.save("users", { id: 'u' + Date.now(), name, email, username, pin, role, assigned, archived: false });
                 }
-                alert("Saved!");
-                App.editingUser = null;
-                App.render('adminDashboard');
+                App.showModal("Success", "User Saved!", false, () => {
+                    App.editingUser = null;
+                    App.render('adminDashboard');
+                });
+                App.showLoader(false);
             },
 
             // --- EMAIL FUNCTION ---
             sendAssessmentInvite: async () => {
                 if(emailConfig.publicKey === "YOUR_PUBLIC_KEY") {
-                    alert("EmailJS is not configured. Please add your keys to the code.");
+                    App.showModal("Configuration Error", "EmailJS is not configured. Please add your keys to the code.", false);
                     return;
                 }
                 
                 const user = App.editingUser;
                 const email = document.getElementById('formEmail').value.trim();
                 if(!user || !email) {
-                    alert("Please ensure the user has a valid email address saved.");
+                    App.showModal("Error", "Please ensure the user has a valid email address saved.", false);
                     return;
                 }
 
                 // Resolve Link:
-                // 1. Try Config URL
-                // 2. Try Window URL (if not blob)
-                // 3. Fallback: Prompt user
                 let appLink = APP_PUBLIC_URL;
                 if (!appLink) {
                     if (window.location.href.startsWith("http") && !window.location.href.includes("localhost") && !window.location.href.startsWith("blob:")) {
@@ -569,6 +754,11 @@
                         if (!appLink) return;
                     }
                 }
+
+                // Confirm sending
+                // Since this runs on click, window.confirm usually works, but lets use modal logic if desired.
+                // For simplicity here, assume user clicked intentfully.
+                console.log(`Sending email to: ${email}`);
 
                 // Gather assignment details
                 App.showLoader(true);
@@ -580,19 +770,21 @@
 
                 const templateParams = {
                     to_name: user.name,
-                    to_email: email,
+                    recipient_email: email, // Changed variable name to force reset
                     username: user.username,
                     pin: user.pin,
                     app_link: appLink,
                     assessments_list: `<ul style="padding-left: 20px; margin-top: 0;">${assignedTitles}</ul>`
                 };
 
+                console.log("EmailJS Params:", templateParams);
+
                 try {
                     await emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams);
-                    alert(`Email successfully sent to ${email}`);
+                    App.showModal("Success", `Email successfully sent to ${email}`, false);
                 } catch(err) {
                     console.error("EmailJS Error:", err);
-                    alert("Failed to send email. Check console for details.");
+                    App.showModal("Error", "Failed to send email. Check console for details.", false);
                 } finally {
                     App.showLoader(false);
                 }
@@ -658,20 +850,32 @@
                 App.showLoader(false);
                 if(q) { App.editingQuiz = q; App.render('quizForm'); }
             },
-            deleteQuiz: async (id) => {
-                if(!confirm("Delete this assessment?")) return;
-                App.showLoader(true);
-                await DB.delete("quizzes", id);
-                // Also remove assignments (optional but good)
-                const allUsers = await DB.getAll("users");
-                for(const u of allUsers) {
-                    if((u.assigned || []).includes(id)) {
-                        u.assigned = u.assigned.filter(a => a !== id);
-                        await DB.save("users", u);
+            deleteQuiz: (id) => {
+                App.showModal(
+                    "Delete Assessment?",
+                    "Are you sure? This will remove it from all assigned users.",
+                    true,
+                    async () => {
+                        try {
+                            App.showLoader(true);
+                            await DB.delete("quizzes", id);
+                            
+                            const allUsers = await DB.getAll("users");
+                            for(const u of allUsers) {
+                                if((u.assigned || []).includes(id)) {
+                                    u.assigned = u.assigned.filter(a => a !== id);
+                                    await DB.save("users", u);
+                                }
+                            }
+                            App.showLoader(false);
+                            App.render('manageQuizzes');
+                        } catch(e) {
+                            console.error(e);
+                            App.showModal("Error", "Error deleting quiz: " + e.message, false);
+                            App.showLoader(false);
+                        }
                     }
-                }
-                App.showLoader(false);
-                App.render('manageQuizzes');
+                );
             },
             addQuestionHTML: () => {
                 const container = document.getElementById('questions-container');
@@ -710,7 +914,9 @@
                 await DB.save("quizzes", quizData);
                 App.showLoader(false);
                 App.editingQuiz = null;
-                App.render('manageQuizzes');
+                App.showModal("Success", "Assessment Saved Successfully!", false, () => {
+                    App.render('manageQuizzes');
+                });
             }
         };
 
