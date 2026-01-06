@@ -88,7 +88,7 @@
 
     <!-- FOOTER -->
     <footer class="bg-gray-800 text-gray-500 py-6 text-center text-sm mt-auto">
-        <p>&copy; 2026 Country Lion Training Assessment. Version 1.7.4 (Patch 1)</p>
+        <p>&copy; 2026 Country Lion Training Assessment. Version 1.8.1</p>
     </footer>
 
     <!-- JAVASCRIPT LOGIC -->
@@ -137,8 +137,8 @@
 
                 console.log("Seeding default data...");
                 const defaultUsers = [
-                    { id: 'u1', name: "John Doe", username: "jdoe", pin: "1234", email: "john@example.com", role: 'learner', assigned: [1, 2], archived: false },
-                    { id: 'u_admin', name: "System Admin", username: "admin", pin: "0000", email: "admin@example.com", role: 'admin', assigned: [1, 2], archived: false }
+                    { id: 'u1', name: "John Doe", username: "jdoe", pin: "1234", email: "john@example.com", role: 'learner', assigned: [1, 2], assignedCourses: [101], archived: false },
+                    { id: 'u_admin', name: "System Admin", username: "admin", pin: "0000", email: "admin@example.com", role: 'admin', assigned: [1, 2], assignedCourses: [101], archived: false }
                 ];
                 const defaultQuizzes = [
                     { 
@@ -158,9 +158,19 @@
                         ]
                     }
                 ];
+                const defaultCourses = [
+                    {
+                        id: 101, title: "Company Orientation", desc: "Welcome to the team.", linkedQuizId: null,
+                        slides: [
+                            { title: "Welcome", content: "Welcome to Country Lion. We are glad to have you.", mediaUrl: "" },
+                            { title: "Our Values", content: "Safety, Reliability, and Customer Service.", mediaUrl: "" }
+                        ]
+                    }
+                ];
 
                 for (const u of defaultUsers) await setDoc(doc(db, "users", u.id), u);
                 for (const q of defaultQuizzes) await setDoc(doc(db, "quizzes", String(q.id)), q);
+                for (const c of defaultCourses) await setDoc(doc(db, "courses", String(c.id)), c);
                 console.log("Seeding complete.");
             },
 
@@ -190,8 +200,11 @@
         const App = {
             currentUser: null,
             currentQuizSession: null,
+            currentCourseSession: null, 
+            activeTab: 'assessments', 
             editingUser: null,
             editingQuiz: null,
+            editingCourse: null,
             viewArchived: false,
 
             init: async () => {
@@ -211,11 +224,14 @@
                 }
 
                 window.addEventListener('click', (e) => {
-                    const container = document.getElementById('quizInputContainer');
-                    const dropdown = document.getElementById('quizDropdown');
-                    if (container && dropdown && !container.contains(e.target)) {
-                        dropdown.classList.add('hidden');
-                    }
+                    const dropdowns = ['quizInputContainer', 'courseInputContainer']; 
+                    dropdowns.forEach(id => {
+                        const container = document.getElementById(id);
+                        if (container) {
+                             const specificDropdown = document.getElementById(id === 'quizInputContainer' ? 'quizDropdown' : 'courseDropdown'); 
+                             if (specificDropdown && !container.contains(e.target)) specificDropdown.classList.add('hidden');
+                        }
+                    });
                 });
             },
 
@@ -232,7 +248,7 @@
                  document.getElementById('modal-text').textContent = msg;
                  
                  const btnContainer = document.getElementById('modal-buttons');
-                 btnContainer.innerHTML = ''; // Clear previous buttons
+                 btnContainer.innerHTML = ''; 
                  
                  if (isConfirm) {
                      const yes = document.createElement('button');
@@ -302,32 +318,143 @@
                         case 'dashboard':
                             if (!App.currentUser) return App.render('login');
                             const allQuizzes = await DB.getAll("quizzes");
+                            const allCourses = await DB.getAll("courses"); 
                             const allResults = await DB.getAll("results");
                             const userHistory = allResults.filter(r => r.userId === App.currentUser.id);
-                            const myQuizzes = allQuizzes.filter(q => (App.currentUser.assigned || []).includes(q.id));
-
-                            let quizCards = myQuizzes.map(q => {
-                                const attempts = userHistory.filter(h => h.quizId === q.id);
-                                const lastAttempt = attempts.length ? attempts[attempts.length-1] : null;
-                                const isPassed = lastAttempt && lastAttempt.passed;
-                                return `
-                                    <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300 flex flex-col h-full border-l-4 ${isPassed ? 'border-green-500' : 'border-lion-gold'}">
-                                        <div class="p-6 flex-grow">
-                                            <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-xl text-gray-800">${q.title}</h3>${isPassed ? '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-bold">COMPLETED</span>' : '<span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full font-bold">PENDING</span>'}</div>
-                                            <p class="text-gray-600 text-sm mb-4">${q.desc}</p>
-                                            <div class="text-xs text-gray-500">Pass Mark: ${q.passMark || 'N/A'}<br>Last Score: ${lastAttempt ? lastAttempt.score + '%' : 'Not taken'}</div>
-                                        </div>
-                                        <div class="bg-gray-50 p-4 border-t border-gray-100"><button onclick="window.app.startQuiz(${q.id})" class="w-full ${isPassed ? 'bg-gray-200 text-gray-600' : 'bg-gray-800 text-white hover:bg-gray-900'} font-bold py-2 rounded transition flex justify-center items-center">${isPassed ? 'Retake Assessment' : 'Start Assessment <i class="fas fa-arrow-right ml-2"></i>'}</button></div>
-                                    </div>`;
-                            }).join('');
                             
-                            if (myQuizzes.length === 0) quizCards = `<div class="col-span-3 text-center py-10 text-gray-500">You have no assessments assigned at this time.</div>`;
+                            const tabClass = (isActive) => isActive ? "border-b-2 border-lion-gold text-gray-900" : "text-gray-500 hover:text-gray-700";
+                            
+                            let contentHTML = "";
+
+                            if (App.activeTab === 'assessments') {
+                                const myQuizzes = allQuizzes.filter(q => (App.currentUser.assigned || []).includes(q.id));
+                                let quizCards = myQuizzes.map(q => {
+                                    const attempts = userHistory.filter(h => h.quizId === q.id && h.type !== 'course');
+                                    const lastAttempt = attempts.length ? attempts[attempts.length-1] : null;
+                                    const isPassed = lastAttempt && lastAttempt.passed;
+                                    
+                                    // Check if linked to course for extra button
+                                    const linkedCourse = allCourses.find(c => c.linkedQuizId === q.id);
+                                    const courseBtn = linkedCourse ? `<button onclick="window.app.startCourse(${linkedCourse.id})" class="mt-2 w-full bg-white border border-gray-300 text-gray-700 font-bold py-2 rounded hover:bg-gray-50"><i class="fas fa-book mr-2"></i> Review Course</button>` : '';
+
+                                    return `
+                                        <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300 flex flex-col h-full border-l-4 ${isPassed ? 'border-green-500' : 'border-lion-gold'}">
+                                            <div class="p-6 flex-grow">
+                                                <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-xl text-gray-800">${q.title}</h3>${isPassed ? '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-bold">COMPLETED</span>' : '<span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full font-bold">PENDING</span>'}</div>
+                                                <p class="text-gray-600 text-sm mb-4">${q.desc}</p>
+                                                <div class="text-xs text-gray-500">Pass Mark: ${q.passMark || 'N/A'}<br>Last Score: ${lastAttempt ? lastAttempt.score + '%' : 'Not taken'}</div>
+                                            </div>
+                                            <div class="bg-gray-50 p-4 border-t border-gray-100">
+                                                <button onclick="window.app.startQuiz(${q.id})" class="w-full ${isPassed ? 'bg-gray-200 text-gray-600' : 'bg-gray-800 text-white hover:bg-gray-900'} font-bold py-2 rounded transition flex justify-center items-center">${isPassed ? 'Retake Assessment' : 'Start Assessment <i class="fas fa-arrow-right ml-2"></i>'}</button>
+                                                ${courseBtn}
+                                            </div>
+                                        </div>`;
+                                }).join('');
+                                if(myQuizzes.length === 0) quizCards = `<div class="col-span-3 text-center py-10 text-gray-500">No assessments assigned.</div>`;
+                                contentHTML = `<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">${quizCards}</div>`;
+                            } else {
+                                // COURSES TAB
+                                const myCourses = allCourses.filter(c => (App.currentUser.assignedCourses || []).includes(c.id));
+                                let courseCards = myCourses.map(c => {
+                                    const completed = userHistory.some(h => h.courseId === c.id && h.type === 'course');
+                                    // Check if linked quiz available
+                                    const linkedQuizId = c.linkedQuizId;
+                                    const quizBtn = linkedQuizId ? `<button onclick="window.app.startQuiz(${linkedQuizId})" class="mt-2 w-full bg-lion-gold text-white font-bold py-2 rounded hover:bg-yellow-600"><i class="fas fa-clipboard-check mr-2"></i> Take Assessment</button>` : '';
+                                    
+                                    return `
+                                        <div class="bg-white rounded-xl shadow-md overflow-hidden hover:shadow-xl transition duration-300 flex flex-col h-full border-l-4 ${completed ? 'border-green-500' : 'border-blue-500'}">
+                                            <div class="p-6 flex-grow">
+                                                <div class="flex justify-between items-start mb-2"><h3 class="font-bold text-xl text-gray-800">${c.title}</h3>${completed ? '<span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full font-bold">COMPLETED</span>' : '<span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-bold">COURSE</span>'}</div>
+                                                <p class="text-gray-600 text-sm mb-4">${c.desc}</p>
+                                                <div class="text-xs text-gray-500">${c.slides ? c.slides.length : 0} Slides</div>
+                                            </div>
+                                            <div class="bg-gray-50 p-4 border-t border-gray-100">
+                                                <button onclick="window.app.startCourse(${c.id})" class="w-full bg-gray-800 text-white hover:bg-gray-900 font-bold py-2 rounded transition flex justify-center items-center">${completed ? 'Review Course' : 'Start Course <i class="fas fa-play ml-2"></i>'}</button>
+                                                ${quizBtn}
+                                            </div>
+                                        </div>`;
+                                }).join('');
+                                if(myCourses.length === 0) courseCards = `<div class="col-span-3 text-center py-10 text-gray-500">No training courses assigned.</div>`;
+                                contentHTML = `<div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">${courseCards}</div>`;
+                            }
 
                             container.innerHTML = `
                                 <div class="fade-in">
-                                    <div class="bg-white p-6 rounded-lg shadow-sm mb-8 border-b border-gray-200"><h1 class="text-3xl font-bold text-gray-800">Welcome, <span class="text-lion-gold">${App.currentUser.name}</span></h1><p class="text-gray-600 mt-1">You have <span class="font-bold">${myQuizzes.length}</span> assigned assessments.</p></div>
-                                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">${quizCards}</div>
+                                    <div class="bg-white p-6 rounded-lg shadow-sm mb-8 border-b border-gray-200">
+                                        <h1 class="text-3xl font-bold text-gray-800">Welcome, <span class="text-lion-gold">${App.currentUser.name}</span></h1>
+                                        
+                                        <!-- Tabs -->
+                                        <div class="flex space-x-6 mt-6 border-b border-gray-200">
+                                            <button onclick="window.app.switchTab('assessments')" class="pb-2 font-medium transition ${tabClass(App.activeTab === 'assessments')}">Assessments</button>
+                                            <button onclick="window.app.switchTab('courses')" class="pb-2 font-medium transition ${tabClass(App.activeTab === 'courses')}">Training Courses</button>
+                                        </div>
+                                    </div>
+                                    ${contentHTML}
                                 </div>`;
+                            break;
+
+                        case 'coursePlayer':
+                            const cSession = App.currentCourseSession;
+                            if(!cSession) return App.render('dashboard');
+                            
+                            const currentSlide = cSession.slides[cSession.currentIndex];
+                            const progress = ((cSession.currentIndex + 1) / cSession.slides.length) * 100;
+                            
+                            const contentsList = cSession.slides.map((s, idx) => `
+                                <div onclick="window.app.jumpToSlide(${idx})" class="p-3 cursor-pointer hover:bg-gray-200 text-sm ${idx === cSession.currentIndex ? 'bg-white border-l-4 border-lion-gold font-bold shadow-sm' : 'text-gray-600'}">
+                                    ${idx+1}. ${s.title}
+                                </div>
+                            `).join('');
+
+                            const mediaEmbed = currentSlide.mediaUrl ? `
+                                <div class="mt-6 mb-6">
+                                    <img src="${currentSlide.mediaUrl}" class="max-h-64 mx-auto rounded shadow" alt="Slide Media" onerror="this.style.display='none'">
+                                </div>` : '';
+
+                            const isLastSlide = cSession.currentIndex === cSession.slides.length - 1;
+                            const nextBtnText = isLastSlide ? "Finish Course" : "Next Slide";
+                            const nextAction = isLastSlide ? "window.app.finishCourse()" : "window.app.nextSlide()";
+                            
+                            // LINKED ASSESSMENT BUTTON ON PLAYER
+                            let linkedAssessmentBtn = '';
+                            if(cSession.linkedQuizId) {
+                                linkedAssessmentBtn = `<button onclick="window.app.startQuiz(${cSession.linkedQuizId})" class="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm"><i class="fas fa-clipboard-check mr-2"></i> Take Assessment</button>`;
+                            }
+
+                            container.innerHTML = `
+                                <div class="fixed inset-0 bg-white z-50 flex flex-col md:flex-row fade-in">
+                                    <!-- Sidebar -->
+                                    <div class="w-full md:w-64 bg-gray-100 border-r border-gray-200 flex flex-col h-full">
+                                        <div class="p-4 bg-gray-800 text-white font-bold flex justify-between items-center">
+                                            <span>Contents</span>
+                                            <button onclick="window.app.render('dashboard')" class="text-xs text-gray-400 hover:text-white">Exit</button>
+                                        </div>
+                                        <div class="flex-grow overflow-y-auto">
+                                            ${contentsList}
+                                        </div>
+                                        <div class="p-4 border-t border-gray-200">
+                                            ${linkedAssessmentBtn}
+                                        </div>
+                                    </div>
+
+                                    <!-- Main Slide Area -->
+                                    <div class="flex-1 flex flex-col h-full bg-gray-50">
+                                        <div class="h-2 bg-gray-200 w-full"><div class="h-full bg-green-500 transition-all duration-300" style="width: ${progress}%"></div></div>
+                                        <div class="flex-grow p-8 overflow-y-auto flex items-center justify-center">
+                                            <div class="max-w-3xl w-full bg-white p-10 rounded-xl shadow-xl min-h-[50vh]">
+                                                <h2 class="text-3xl font-bold text-gray-800 mb-6 border-b pb-4">${currentSlide.title}</h2>
+                                                ${mediaEmbed}
+                                                <div class="prose max-w-none text-gray-700 leading-relaxed text-lg whitespace-pre-wrap">${currentSlide.content}</div>
+                                            </div>
+                                        </div>
+                                        <div class="p-4 bg-white border-t border-gray-200 flex justify-between items-center">
+                                            <button onclick="window.app.prevSlide()" class="px-6 py-2 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold ${cSession.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : ''}" ${cSession.currentIndex === 0 ? 'disabled' : ''}>Previous</button>
+                                            <div class="text-gray-500 font-mono">Slide ${cSession.currentIndex + 1} / ${cSession.slides.length}</div>
+                                            <button onclick="${nextAction}" class="px-6 py-2 rounded bg-lion-gold hover:bg-yellow-600 text-white font-bold shadow">${nextBtnText}</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
                             break;
 
                         case 'quiz':
@@ -336,6 +463,12 @@
                             
                             const introHtml = session.introText ? `<div class="bg-blue-50 border-l-4 border-blue-500 text-blue-900 p-4 mb-6 rounded text-sm leading-relaxed">${session.introText.replace(/\n/g, '<br>')}</div>` : '';
                             const linkHtml = session.materialLink ? `<div class="mb-6 text-center"><a href="${session.materialLink}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center px-4 py-2 bg-lion-gold text-white rounded hover:bg-yellow-600 transition shadow"><i class="fas fa-book-open mr-2"></i> View Course Material</a></div>` : '';
+                            
+                            // Check linked course button
+                            let linkedCourseBtn = '';
+                            if(session.linkedCourseId) {
+                                linkedCourseBtn = `<div class="mb-6 text-center"><button onclick="window.app.startCourse(${session.linkedCourseId})" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition shadow"><i class="fas fa-play mr-2"></i> Review Course Slides</button></div>`;
+                            }
 
                             let qHtml = session.questions.map((q, idx) => `
                                 <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-200"><p class="font-semibold text-lg text-gray-800 mb-4"><span class="text-lion-gold font-bold mr-2">Q${idx+1}.</span> ${q.q}</p>
@@ -344,6 +477,7 @@
                             container.innerHTML = `
                                 <div class="max-w-3xl mx-auto fade-in bg-white p-8 rounded-xl shadow-lg">
                                     <div class="flex justify-between items-center mb-6 pb-4 border-b"><div><h2 class="text-2xl font-bold">${session.title}</h2><p class="text-xs text-gray-500 mt-1">Pass Mark: ${session.passMark} correct</p></div><button onclick="window.app.render('dashboard')" class="text-gray-400 hover:text-gray-600"><i class="fas fa-times"></i> Cancel</button></div>
+                                    ${linkedCourseBtn}
                                     ${introHtml}
                                     ${linkHtml}
                                     <form id="quizForm" onsubmit="event.preventDefault(); window.app.submitQuiz()">${qHtml}<div class="mt-8 pt-4 border-t border-gray-100 flex justify-end"><button type="submit" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-lg shadow transition text-lg">Submit Assessment</button></div></form>
@@ -380,12 +514,14 @@
                             break;
 
                         case 'adminDashboard':
+                            // ... (adminDashboard code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const aUsers = await DB.getAll("users");
                             const aResults = await DB.getAll("results");
                             const aQuizzes = await DB.getAll("quizzes");
+                            const aCourses = await DB.getAll("courses"); // Fetch courses
 
-                            const resRows = aResults.slice().reverse().map(r => `
+                            const resRows = aResults.filter(r => r.type !== 'course').slice().reverse().map(r => `
                                 <tr class="border-b hover:bg-gray-50 cursor-pointer" onclick="window.app.viewResult('${r.resultId}')">
                                     <td class="p-4 font-medium">${r.userName}</td>
                                     <td class="p-4 text-gray-600">${r.quizTitle}</td>
@@ -397,16 +533,26 @@
                             const displayedUsers = aUsers.filter(u => !!u.archived === showArchived);
 
                             const uRows = displayedUsers.map(u => {
-                                const assigns = (u.assigned || []).map(qId => {
+                                // Calculate Quiz Status
+                                const quizAssigns = (u.assigned || []).map(qId => {
                                     const q = aQuizzes.find(x => x.id === qId);
                                     if (!q) return '';
-                                    const uRes = aResults.filter(r => r.userId === u.id && r.quizId === qId);
+                                    const uRes = aResults.filter(r => r.userId === u.id && r.quizId === qId && r.type !== 'course');
                                     const last = uRes.length ? uRes[uRes.length-1] : null;
                                     if(last) {
                                         const col = last.passed ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200';
                                         return `<span onclick="event.stopPropagation(); window.app.viewResult('${last.resultId}')" class="cursor-pointer inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${col} mr-1 mb-1">${q.title.substring(0,10)}...: ${last.score}%</span>`;
                                     }
                                     return `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200 mr-1 mb-1">${q.title.substring(0,10)}...</span>`;
+                                }).join('');
+
+                                // Calculate Course Status
+                                const courseAssigns = (u.assignedCourses || []).map(cId => {
+                                    const c = aCourses.find(x => x.id === cId);
+                                    if (!c) return '';
+                                    const completed = aResults.some(r => r.userId === u.id && r.courseId === cId && r.type === 'course');
+                                    const col = completed ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-gray-100 text-gray-800 border-gray-200';
+                                    return `<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${col} mr-1 mb-1"><i class="fas fa-book mr-1"></i>${c.title.substring(0,10)}</span>`;
                                 }).join('');
                                 
                                 const archiveBtn = showArchived 
@@ -416,7 +562,12 @@
                                 return `<tr class="border-b hover:bg-gray-50">
                                     <td class="p-4 font-bold text-gray-800">${u.name}</td>
                                     <td class="p-4 text-gray-600 font-mono text-sm">${u.username}</td>
-                                    <td class="p-4 flex flex-wrap">${assigns || '-'}</td>
+                                    <td class="p-4">
+                                        <div class="mb-1 text-xs text-gray-400">Assessments:</div>
+                                        <div class="flex flex-wrap mb-2">${quizAssigns || '-'}</div>
+                                        <div class="mb-1 text-xs text-gray-400">Courses:</div>
+                                        <div class="flex flex-wrap">${courseAssigns || '-'}</div>
+                                    </td>
                                     <td class="p-4 text-right">
                                         <button onclick="window.app.editUser('${u.id}')" class="text-sm bg-white border border-gray-300 text-gray-700 px-3 py-1 rounded hover:bg-gray-100">Manage</button>
                                         ${archiveBtn}
@@ -429,7 +580,7 @@
 
                             container.innerHTML = `
                                 <div class="fade-in space-y-8">
-                                    <div class="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-lg shadow-sm"><div><h2 class="text-3xl font-bold text-gray-800">Admin Dashboard</h2><p class="text-gray-500">Cloud Database Active</p></div><div class="mt-4 md:mt-0 flex gap-3"><button onclick="window.app.render('dashboard')" class="bg-white border border-gray-300 px-4 py-2 rounded">My Assessments</button><button onclick="window.app.render('manageQuizzes')" class="bg-white border border-gray-300 px-4 py-2 rounded">Manage Assessments</button><button onclick="window.app.startCreateUser()" class="bg-lion-gold text-white px-6 py-2 rounded font-bold">+ Create User</button></div></div>
+                                    <div class="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-lg shadow-sm"><div><h2 class="text-3xl font-bold text-gray-800">Admin Dashboard</h2><p class="text-gray-500">Cloud Database Active</p></div><div class="mt-4 md:mt-0 flex flex-col md:flex-row gap-3"><button onclick="window.app.render('dashboard')" class="bg-white border border-gray-300 px-4 py-2 rounded">My View</button><button onclick="window.app.render('manageCourses')" class="bg-white border border-gray-300 px-4 py-2 rounded">Manage Courses</button><button onclick="window.app.render('manageQuizzes')" class="bg-white border border-gray-300 px-4 py-2 rounded">Manage Assessments</button><button onclick="window.app.startCreateUser()" class="bg-lion-gold text-white px-6 py-2 rounded font-bold">+ Create User</button></div></div>
                                     <div class="grid lg:grid-cols-3 gap-8">
                                         <div class="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden">
                                             <div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700 flex justify-between items-center">
@@ -437,17 +588,17 @@
                                                 <button onclick="window.app.toggleArchivedView()" class="text-xs text-white px-3 py-1 rounded ${toggleBtnColor}">${toggleBtnText}</button>
                                             </div>
                                             <div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10"><tr><th class="p-4">Name</th><th class="p-4">User</th><th class="p-4">Status</th><th class="p-4 text-right">Action</th></tr></thead><tbody>${uRows || '<tr><td colspan="4" class="p-4 text-center text-gray-500">No users found in this view.</td></tr>'}</tbody></table></div></div>
-                                        <div class="bg-white rounded-lg shadow overflow-hidden"><div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">History</div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10"><tr><th class="p-4">User</th><th class="p-4">Quiz</th><th class="p-4">Score</th></tr></thead><tbody>${resRows}</tbody></table></div></div>
+                                        <div class="bg-white rounded-lg shadow overflow-hidden"><div class="bg-gray-50 px-6 py-4 border-b font-bold text-gray-700">Quiz History</div><div class="overflow-x-auto max-h-[500px] overflow-y-auto"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase sticky top-0 z-10"><tr><th class="p-4">User</th><th class="p-4">Quiz</th><th class="p-4">Score</th></tr></thead><tbody>${resRows}</tbody></table></div></div>
                                     </div>
                                 </div>`;
                             break;
 
                         case 'manageQuizzes':
-                            if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
+                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const mQuizzes = await DB.getAll("quizzes");
-                            const mUsers = await DB.getAll("users");
+                            const mQUsers = await DB.getAll("users");
                             const qRows = mQuizzes.map(q => {
-                                const count = mUsers.filter(u => (u.assigned || []).includes(q.id)).length;
+                                const count = mQUsers.filter(u => (u.assigned || []).includes(q.id)).length;
                                 return `<tr class="border-b hover:bg-gray-50"><td class="p-4 font-bold text-gray-800">${q.title}</td><td class="p-4">${q.questions.length} Qs</td><td class="p-4">${count} Users</td><td class="p-4 text-right"><button onclick="window.app.editQuiz(${q.id})" class="text-blue-600 mr-4">Edit</button><button onclick="window.app.deleteQuiz(${q.id})" class="text-red-500">Delete</button></td></tr>`;
                             }).join('');
                             container.innerHTML = `
@@ -455,17 +606,40 @@
                                 <div class="bg-white rounded-lg shadow overflow-hidden"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase"><tr><th class="p-4">Title</th><th class="p-4">Bank</th><th class="p-4">Assigned</th><th class="p-4 text-right">Actions</th></tr></thead><tbody>${qRows || '<tr><td colspan="4" class="p-6 text-center">No assessments found.</td></tr>'}</tbody></table></div></div>`;
                             break;
 
+                        case 'manageCourses':
+                            // ... (manageCourses code unchanged)
+                            if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
+                            const mCourses = await DB.getAll("courses");
+                            const mcUsers = await DB.getAll("users");
+                            const cRows = mCourses.map(c => {
+                                const count = mcUsers.filter(u => (u.assignedCourses || []).includes(c.id)).length;
+                                return `<tr class="border-b hover:bg-gray-50"><td class="p-4 font-bold text-gray-800">${c.title}</td><td class="p-4">${c.slides ? c.slides.length : 0} Slides</td><td class="p-4">${count} Users</td><td class="p-4 text-right"><button onclick="window.app.editCourse(${c.id})" class="text-blue-600 mr-4">Edit</button><button onclick="window.app.deleteCourse(${c.id})" class="text-red-500">Delete</button></td></tr>`;
+                            }).join('');
+                            container.innerHTML = `
+                                <div class="max-w-4xl mx-auto fade-in"><div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold text-gray-800">Training Courses</h2><div><button onclick="window.app.render('adminDashboard')" class="text-gray-500 mr-4">Back</button><button onclick="window.app.startCreateCourse()" class="bg-lion-gold text-white px-6 py-2 rounded font-bold">+ New Course</button></div></div>
+                                <div class="bg-white rounded-lg shadow overflow-hidden"><table class="w-full text-left border-collapse"><thead class="bg-gray-100 text-gray-600 text-xs uppercase"><tr><th class="p-4">Title</th><th class="p-4">Content</th><th class="p-4">Assigned</th><th class="p-4 text-right">Actions</th></tr></thead><tbody>${cRows || '<tr><td colspan="4" class="p-6 text-center">No courses found.</td></tr>'}</tbody></table></div></div>`;
+                            break;
+
                         case 'userForm':
+                            // ... (userForm code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const isEdit = !!App.editingUser;
-                            const u = App.editingUser || { name: '', username: '', pin: '', email: '', role: 'learner', assigned: [] };
+                            const u = App.editingUser || { name: '', username: '', pin: '', email: '', role: 'learner', assigned: [], assignedCourses: [] };
                             const formQuizzes = await DB.getAll("quizzes");
+                            const formCourses = await DB.getAll("courses");
                             
                             const assignedTags = (u.assigned || []).map(id => {
                                 const q = formQuizzes.find(x => x.id === id);
-                                return q ? `<div class="bg-blue-50 border border-blue-200 text-blue-800 rounded px-3 py-1 flex items-center gap-2" data-id="${id}"><span class="text-sm font-medium">${q.title}</span><button type="button" onclick="this.parentElement.remove()" class="text-blue-400 hover:text-blue-600"><i class="fas fa-times"></i></button></div>` : '';
+                                return q ? `<div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded px-3 py-1 flex items-center gap-2" data-id="${id}" data-type="quiz"><span class="text-sm font-medium"><i class="fas fa-clipboard-check mr-1"></i> ${q.title}</span><button type="button" onclick="this.parentElement.remove()" class="text-yellow-600 hover:text-yellow-800"><i class="fas fa-times"></i></button></div>` : '';
                             }).join('');
-                            const ddItems = formQuizzes.map(q => `<div onclick="window.app.addAssignment(${q.id})" data-search="${q.title.toLowerCase()}" class="quiz-option p-3 hover:bg-gray-100 cursor-pointer border-b">${q.title}</div>`).join('');
+                            
+                            const assignedCourseTags = (u.assignedCourses || []).map(id => {
+                                const c = formCourses.find(x => x.id === id);
+                                return c ? `<div class="bg-blue-50 border border-blue-200 text-blue-800 rounded px-3 py-1 flex items-center gap-2" data-id="${id}" data-type="course"><span class="text-sm font-medium"><i class="fas fa-book mr-1"></i> ${c.title}</span><button type="button" onclick="this.parentElement.remove()" class="text-blue-600 hover:text-blue-800"><i class="fas fa-times"></i></button></div>` : '';
+                            }).join('');
+
+                            const ddItems = formQuizzes.map(q => `<div onclick="window.app.addAssignment(${q.id}, 'quiz')" data-search="${q.title.toLowerCase()}" class="quiz-option p-3 hover:bg-gray-100 cursor-pointer border-b">${q.title}</div>`).join('');
+                            const courseDDItems = formCourses.map(c => `<div onclick="window.app.addAssignment(${c.id}, 'course')" data-search="${c.title.toLowerCase()}" class="course-option p-3 hover:bg-gray-100 cursor-pointer border-b">${c.title}</div>`).join('');
 
                             const sendInviteBtn = isEdit 
                                 ? `<button type="button" onclick="window.app.sendAssessmentInvite()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow transition mr-auto flex items-center"><i class="fas fa-envelope mr-2"></i> Send Email</button>`
@@ -479,26 +653,15 @@
                             if (isEdit) {
                                 const allResultsHist = await DB.getAll("results");
                                 const userHist = allResultsHist.filter(r => r.userId === u.id).sort((a,b) => new Date(b.date) - new Date(a.date));
-                                const histRows = userHist.map(r => `
-                                    <tr class="border-b hover:bg-gray-50">
-                                        <td class="p-3 text-sm">${new Date(r.date).toLocaleString()}</td>
-                                        <td class="p-3 text-sm font-medium">${r.quizTitle}</td>
-                                        <td class="p-3 text-sm font-bold ${r.passed ? 'text-green-600' : 'text-red-600'}">${r.score}%</td>
-                                        <td class="p-3 text-sm"><button onclick="window.app.viewResult('${r.resultId}')" class="text-blue-600 hover:underline">View</button></td>
-                                    </tr>
-                                `).join('');
+                                const histRows = userHist.map(r => {
+                                    if(r.type === 'course') {
+                                        return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm">${new Date(r.date).toLocaleString()}</td><td class="p-3 text-sm font-medium">${r.courseTitle}</td><td class="p-3 text-sm font-bold text-blue-600">Completed</td><td class="p-3 text-sm">-</td></tr>`;
+                                    } else {
+                                        return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm">${new Date(r.date).toLocaleString()}</td><td class="p-3 text-sm font-medium">${r.quizTitle}</td><td class="p-3 text-sm font-bold ${r.passed ? 'text-green-600' : 'text-red-600'}">${r.score}%</td><td class="p-3 text-sm"><button onclick="window.app.viewResult('${r.resultId}')" class="text-blue-600 hover:underline">View</button></td></tr>`;
+                                    }
+                                }).join('');
                                 
-                                historyHTML = `
-                                    <div class="mt-8 border-t pt-6">
-                                        <h3 class="font-bold text-gray-800 mb-4">Assessment History</h3>
-                                        <div class="bg-gray-50 rounded border border-gray-200 overflow-hidden">
-                                            <table class="w-full text-left">
-                                                <thead class="bg-gray-100 text-xs text-gray-600 uppercase border-b"><tr><th class="p-3">Date</th><th class="p-3">Assessment</th><th class="p-3">Score</th><th class="p-3">Report</th></tr></thead>
-                                                <tbody>${histRows || '<tr><td colspan="4" class="p-4 text-center text-gray-500 text-sm">No assessments completed yet.</td></tr>'}</tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                `;
+                                historyHTML = `<div class="mt-8 border-t pt-6"><h3 class="font-bold text-gray-800 mb-4">Activity History</h3><div class="bg-gray-50 rounded border border-gray-200 overflow-hidden"><table class="w-full text-left"><thead class="bg-gray-100 text-xs text-gray-600 uppercase border-b"><tr><th class="p-3">Date</th><th class="p-3">Item</th><th class="p-3">Status</th><th class="p-3">Report</th></tr></thead><tbody>${histRows || '<tr><td colspan="4" class="p-4 text-center text-gray-500 text-sm">No activity recorded.</td></tr>'}</tbody></table></div></div>`;
                             }
 
                             container.innerHTML = `
@@ -512,10 +675,27 @@
                                             <div><label class="block text-gray-700 text-sm font-bold mb-2">PIN</label><input type="text" id="formPin" value="${safe(u.pin)}" maxlength="4" class="w-full p-3 border border-gray-300 rounded text-center"></div>
                                             <div><label class="block text-gray-700 text-sm font-bold mb-2">Role</label><select id="formRole" class="w-full p-3 border border-gray-300 rounded"><option value="learner" ${u.role === 'learner'?'selected':''}>Learner</option><option value="admin" ${u.role === 'admin'?'selected':''}>Admin</option></select></div>
                                         </div>
-                                        <div class="mb-6 border-t pt-4"><label class="block text-gray-700 text-sm font-bold mb-3">Assignments</label>
-                                            <div id="assigned-container" class="flex flex-wrap gap-2 mb-4 min-h-[40px] p-2 bg-gray-50 rounded border border-gray-200">${assignedTags}</div>
-                                            <div class="flex gap-2 relative" id="quizInputContainer"><input type="text" id="quizInput" oninput="window.app.filterQuizzes()" onfocus="window.app.showQuizDropdown()" class="w-full p-3 border border-gray-300 rounded" placeholder="Search assessments..."><div id="quizDropdown" class="hidden absolute z-20 w-full bg-white border border-gray-300 mt-1 max-h-60 overflow-y-auto shadow-xl rounded-md top-12">${ddItems}</div></div>
+                                        
+                                        <div class="mb-6 border-t pt-4">
+                                            <label class="block text-gray-700 text-sm font-bold mb-3">Assignments</label>
+                                            <div id="assigned-container" class="flex flex-wrap gap-2 mb-4 min-h-[40px] p-2 bg-gray-50 rounded border border-gray-200">
+                                                ${assignedTags}
+                                                ${assignedCourseTags}
+                                            </div>
+                                            
+                                            <!-- Assessment Selector -->
+                                            <div class="flex gap-2 relative mb-2" id="quizInputContainer">
+                                                <input type="text" id="quizInput" oninput="window.app.filterQuizzes()" onfocus="window.app.showQuizDropdown()" class="w-full p-3 border border-gray-300 rounded" placeholder="Add Assessment...">
+                                                <div id="quizDropdown" class="hidden absolute z-20 w-full bg-white border border-gray-300 mt-1 max-h-60 overflow-y-auto shadow-xl rounded-md top-12 custom-dropdown">${ddItems}</div>
+                                            </div>
+                                            
+                                            <!-- Course Selector -->
+                                            <div class="flex gap-2 relative" id="courseInputContainer">
+                                                <input type="text" id="courseInput" oninput="window.app.filterCourses()" onfocus="window.app.showCourseDropdown()" class="w-full p-3 border border-gray-300 rounded" placeholder="Add Training Course...">
+                                                <div id="courseDropdown" class="hidden absolute z-20 w-full bg-white border border-gray-300 mt-1 max-h-60 overflow-y-auto shadow-xl rounded-md top-12 custom-dropdown">${courseDDItems}</div>
+                                            </div>
                                         </div>
+
                                         <div class="flex justify-between items-center pt-4 border-t">
                                             <div class="flex items-center">
                                                 ${sendInviteBtn}
@@ -534,8 +714,11 @@
                         case 'quizForm':
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const isEditQ = !!App.editingQuiz;
-                            const q = App.editingQuiz || { title: '', desc: '', questions: [], displayCount: 5, passMark: 4, introText: '', materialLink: '' };
+                            const q = App.editingQuiz || { title: '', desc: '', questions: [], displayCount: 5, passMark: 4, introText: '', materialLink: '', linkedCourseId: '' };
                             if (!isEditQ && q.questions.length === 0) q.questions.push({ q: '', options: ['', '', '', ''], ans: 0, explain: '' });
+
+                            const coursesForLink = await DB.getAll("courses");
+                            const courseOptions = coursesForLink.map(c => `<option value="${c.id}" ${q.linkedCourseId == c.id ? 'selected' : ''}>${c.title}</option>`).join('');
 
                             const qBlocks = q.questions.map((quest, idx) => {
                                 const opts = quest.options; while(opts.length < 4) opts.push('');
@@ -559,6 +742,14 @@
                                         
                                         <div class="bg-blue-50 border border-blue-200 p-4 rounded mb-8">
                                             <div class="mb-6">
+                                                <label class="block text-sm font-bold mb-2 text-blue-900">Linked Training Course</label>
+                                                <select id="quizLinkedCourse" class="w-full p-3 border border-gray-300 rounded">
+                                                    <option value="">-- None --</option>
+                                                    ${courseOptions}
+                                                </select>
+                                                <p class="text-xs text-gray-500 mt-1">Learners can jump to this course from the assessment.</p>
+                                            </div>
+                                            <div class="mb-6">
                                                 <label class="block text-sm font-bold mb-2 text-blue-900">Introduction / Instructions</label>
                                                 <textarea id="quizIntroText" class="w-full p-3 border border-gray-300 rounded text-sm" rows="3" placeholder="Instructions shown before questions...">${q.introText || ''}</textarea>
                                             </div>
@@ -576,6 +767,57 @@
                                         <div id="questions-container">${qBlocks}</div>
                                         <div class="mb-8"><button type="button" onclick="window.app.addQuestionHTML()" class="text-lion-gold border border-lion-gold rounded px-4 py-2 text-sm w-full">+ Add Question</button></div>
                                         <div class="flex justify-between pt-4 border-t"><button type="button" onclick="window.app.render('manageQuizzes')" class="text-gray-500">Cancel</button><button type="submit" class="bg-lion-gold text-white font-bold py-3 px-8 rounded shadow">Save Assessment</button></div>
+                                    </form>
+                                </div>`;
+                            break;
+
+                        case 'courseForm':
+                            if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
+                            const isEditC = !!App.editingCourse;
+                            const c = App.editingCourse || { title: '', desc: '', slides: [], linkedQuizId: '' };
+                            if (!isEditC && c.slides.length === 0) c.slides.push({ title: '', content: '', mediaUrl: '' });
+                            
+                            const quizzesForLink = await DB.getAll("quizzes");
+                            const quizOptions = quizzesForLink.map(q => `<option value="${q.id}" ${c.linkedQuizId == q.id ? 'selected' : ''}>${q.title}</option>`).join('');
+
+                            const sBlocks = c.slides.map((slide, idx) => `
+                                <div class="slide-block bg-gray-50 p-6 rounded border border-gray-200 mb-6 relative">
+                                    <div class="absolute top-4 right-4 text-red-400 cursor-pointer" onclick="this.closest('.slide-block').remove();" title="Remove Slide"><i class="fas fa-trash"></i></div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-bold mb-2">Slide ${idx+1} Title</label>
+                                        <input type="text" class="s-title w-full p-3 border border-gray-300 rounded" value="${safe(slide.title)}" required>
+                                    </div>
+                                    <div class="mb-4">
+                                        <label class="block text-sm font-bold mb-2">Content (Text)</label>
+                                        <textarea class="s-content w-full p-3 border border-gray-300 rounded h-32" required>${slide.content}</textarea>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-bold mb-2">Media URL (Optional Image/Video)</label>
+                                        <input type="text" class="s-media w-full p-3 border border-gray-300 rounded" value="${safe(slide.mediaUrl)}" placeholder="https://...">
+                                    </div>
+                                </div>`).join('');
+
+                            container.innerHTML = `
+                                <div class="max-w-4xl mx-auto mt-6 bg-white p-8 rounded-xl shadow-xl fade-in border-t-4 border-blue-500">
+                                    <h2 class="text-2xl font-bold mb-6 text-gray-800">${isEditC ? 'Edit Course' : 'Create New Course'}</h2>
+                                    <form onsubmit="window.app.handleSaveCourse(event)">
+                                        <div class="mb-6"><label class="block text-sm font-bold mb-2">Course Title</label><input type="text" id="courseTitle" value="${safe(c.title)}" required class="w-full p-3 border border-gray-300 rounded text-lg font-bold"></div>
+                                        <div class="mb-6"><label class="block text-sm font-bold mb-2">Description</label><input type="text" id="courseDesc" value="${safe(c.desc)}" required class="w-full p-3 border border-gray-300 rounded"></div>
+                                        
+                                        <div class="mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded">
+                                            <label class="block text-sm font-bold mb-2 text-yellow-900">Linked Assessment</label>
+                                            <select id="courseLinkedQuiz" class="w-full p-3 border border-gray-300 rounded">
+                                                <option value="">-- None --</option>
+                                                ${quizOptions}
+                                            </select>
+                                            <p class="text-xs text-gray-500 mt-1">If selected, this assessment will be automatically assigned when you assign this course.</p>
+                                        </div>
+
+                                        <h3 class="font-bold text-gray-800 mb-4 border-b pb-1">Slides</h3>
+                                        <div id="slides-container">${sBlocks}</div>
+                                        <div class="mb-8"><button type="button" onclick="window.app.addSlideHTML()" class="text-blue-600 border border-blue-600 rounded px-4 py-2 text-sm w-full">+ Add Slide</button></div>
+                                        
+                                        <div class="flex justify-between pt-4 border-t"><button type="button" onclick="window.app.render('manageCourses')" class="text-gray-500">Cancel</button><button type="submit" class="bg-blue-600 text-white font-bold py-3 px-8 rounded shadow">Save Course</button></div>
                                     </form>
                                 </div>`;
                             break;
@@ -626,8 +868,6 @@
             },
 
             archiveUser: (id) => {
-                console.log("Archiving user:", id);
-                // Print to console to debug click
                 App.showModal(
                     "Archive User?",
                     "Are you sure you want to archive this user? They will not be able to login.",
@@ -699,6 +939,8 @@
 
             // Tag & Dropdown Logic
             showQuizDropdown: () => { document.getElementById('quizDropdown').classList.remove('hidden'); },
+            showCourseDropdown: () => { document.getElementById('courseDropdown').classList.remove('hidden'); },
+            
             filterQuizzes: () => {
                 const val = document.getElementById('quizInput').value.toLowerCase();
                 document.querySelectorAll('.quiz-option').forEach(el => {
@@ -706,25 +948,62 @@
                 });
                 document.getElementById('quizDropdown').classList.remove('hidden');
             },
-            addAssignment: async (id = null) => {
-                App.showLoader(true); // Since we might need to fetch
-                const allQ = await DB.getAll("quizzes");
+
+            filterCourses: () => {
+                const val = document.getElementById('courseInput').value.toLowerCase();
+                document.querySelectorAll('.course-option').forEach(el => {
+                    el.classList.toggle('hidden', !el.dataset.search.includes(val));
+                });
+                document.getElementById('courseDropdown').classList.remove('hidden');
+            },
+
+            addAssignment: async (id = null, type = 'quiz') => {
+                App.showLoader(true);
+                let item = null;
+                
+                if (type === 'quiz') {
+                    const all = await DB.getAll("quizzes");
+                    item = id ? all.find(x => x.id === id) : null;
+                } else {
+                    const all = await DB.getAll("courses");
+                    item = id ? all.find(x => x.id === id) : null;
+                }
+                
                 App.showLoader(false);
                 
-                let quiz = id ? allQ.find(q => q.id === id) : null;
-                
+                if(!item) return;
+
                 const container = document.getElementById('assigned-container');
-                if(!quiz || container.querySelector(`[data-id="${quiz.id}"]`)) {
-                    document.getElementById('quizInput').value = '';
+                // Check dupes
+                if(container.querySelector(`[data-id="${item.id}"][data-type="${type}"]`)) {
+                    document.getElementById(type === 'quiz' ? 'quizInput' : 'courseInput').value = '';
+                    document.getElementById(type === 'quiz' ? 'quizDropdown' : 'courseDropdown').classList.add('hidden');
                     return;
                 }
+                
+                // AUTO-ASSIGN LOGIC (Implicit assignment when adding a course)
+                if (type === 'course' && item.linkedQuizId) {
+                   const quizContainer = document.getElementById('assigned-container');
+                   if(!quizContainer.querySelector(`[data-id="${item.linkedQuizId}"][data-type="quiz"]`)) {
+                        // Recursively add the quiz assignment
+                        await App.addAssignment(parseInt(item.linkedQuizId), 'quiz');
+                   }
+                }
+
                 const tag = document.createElement('div');
-                tag.className = "bg-blue-50 border border-blue-200 text-blue-800 rounded px-3 py-1 flex items-center gap-2";
-                tag.dataset.id = quiz.id;
-                tag.innerHTML = `<span class="text-sm font-medium">${quiz.title}</span><button type="button" onclick="this.parentElement.remove()" class="text-blue-400 hover:text-blue-600"><i class="fas fa-times"></i></button>`;
+                const colorClass = type === 'quiz' ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : 'bg-blue-50 border-blue-200 text-blue-800';
+                const icon = type === 'quiz' ? 'fa-clipboard-check' : 'fa-book';
+                
+                tag.className = `${colorClass} border rounded px-3 py-1 flex items-center gap-2`;
+                tag.dataset.id = item.id;
+                tag.dataset.type = type;
+                tag.innerHTML = `<span class="text-sm font-medium"><i class="fas ${icon} mr-1"></i> ${item.title}</span><button type="button" onclick="this.parentElement.remove()" class="hover:opacity-75"><i class="fas fa-times"></i></button>`;
                 container.appendChild(tag);
-                document.getElementById('quizInput').value = '';
-                document.getElementById('quizDropdown').classList.add('hidden');
+                
+                const inputId = type === 'quiz' ? 'quizInput' : 'courseInput';
+                const ddId = type === 'quiz' ? 'quizDropdown' : 'courseDropdown';
+                document.getElementById(inputId).value = '';
+                document.getElementById(ddId).classList.add('hidden');
             },
 
             handleSaveUser: async (e) => {
@@ -732,19 +1011,22 @@
                 App.showLoader(true);
                 const name = document.getElementById('formName').value.trim();
                 const email = document.getElementById('formEmail').value.trim();
-                const username = document.getElementById('formUsername').value.trim().toLowerCase(); // Force lowercase
+                const username = document.getElementById('formUsername').value.trim().toLowerCase(); 
                 const pin = document.getElementById('formPin').value.trim();
                 const role = document.getElementById('formRole').value;
-                const assigned = Array.from(document.querySelectorAll('#assigned-container > div')).map(d => parseInt(d.dataset.id));
+                
+                // Separate assignments
+                const allTags = Array.from(document.querySelectorAll('#assigned-container > div'));
+                const assigned = allTags.filter(t => t.dataset.type === 'quiz').map(d => parseInt(d.dataset.id));
+                const assignedCourses = allTags.filter(t => t.dataset.type === 'course').map(d => parseInt(d.dataset.id));
 
                 if(App.editingUser) {
-                    await DB.save("users", { ...App.editingUser, name, email, username, pin, role, assigned });
+                    await DB.save("users", { ...App.editingUser, name, email, username, pin, role, assigned, assignedCourses });
                 } else {
-                    // Check duplicate
                     const q = query(collection(db, "users"), where("username", "==", username));
                     const snap = await getDocs(q);
                     if(!snap.empty) { App.showModal("Error", "Username taken", false); App.showLoader(false); return; }
-                    await DB.save("users", { id: 'u' + Date.now(), name, email, username, pin, role, assigned, archived: false });
+                    await DB.save("users", { id: 'u' + Date.now(), name, email, username, pin, role, assigned, assignedCourses, archived: false });
                 }
                 App.showModal("Success", "User Saved!", false, () => {
                     App.editingUser = null;
@@ -767,23 +1049,18 @@
                     return;
                 }
 
-                // Resolve Link:
                 let appLink = APP_PUBLIC_URL;
                 if (!appLink) {
                     if (window.location.href.startsWith("http") && !window.location.href.includes("localhost") && !window.location.href.startsWith("blob:")) {
                         appLink = window.location.href;
                     } else {
-                        appLink = prompt("Please enter the public URL for your app (e.g. your GitHub Pages link) to ensure the email link works:", "https://your-username.github.io/repository-name");
+                        appLink = prompt("Please enter the public URL for your app:", "https://your-username.github.io/repository-name");
                         if (!appLink) return;
                     }
                 }
 
-                // Confirm sending
-                // Since this runs on click, window.confirm usually works, but lets use modal logic if desired.
-                // For simplicity here, assume user clicked intentfully.
                 console.log(`Sending email to: ${email}`);
 
-                // Gather assignment details
                 App.showLoader(true);
                 const allQ = await DB.getAll("quizzes");
                 const assignedTitles = (user.assigned || []).map(id => {
@@ -793,14 +1070,12 @@
 
                 const templateParams = {
                     to_name: user.name,
-                    recipient_email: email, // Changed variable name to force reset
+                    recipient_email: email, 
                     username: user.username,
                     pin: user.pin,
                     app_link: appLink,
                     assessments_list: `<ul style="padding-left: 20px; margin-top: 0;">${assignedTitles}</ul>`
                 };
-
-                console.log("EmailJS Params:", templateParams);
 
                 try {
                     await emailjs.send(emailConfig.serviceID, emailConfig.templateID, templateParams);
@@ -819,7 +1094,6 @@
                 App.showLoader(false);
                 if(!quiz) return;
 
-                // Randomize
                 const pool = [...quiz.questions];
                 for (let i = pool.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
@@ -834,8 +1108,9 @@
                     title: quiz.title, 
                     questions: selected, 
                     passMark: passMark,
-                    introText: quiz.introText,      // Added here
-                    materialLink: quiz.materialLink // Added here
+                    introText: quiz.introText,
+                    materialLink: quiz.materialLink,
+                    linkedCourseId: quiz.linkedCourseId // Passed for nav button
                 };
                 App.render('quiz');
             },
@@ -872,7 +1147,134 @@
                 App.render('quizResults', result.resultId);
             },
 
-            // Quiz Management Actions
+            // --- COURSE LOGIC ---
+            switchTab: (tab) => {
+                App.activeTab = tab;
+                App.render('dashboard');
+            },
+            
+            startCourse: async (id) => {
+                App.showLoader(true);
+                const course = await DB.getById("courses", id);
+                App.showLoader(false);
+                if(!course) return;
+                
+                App.currentCourseSession = { ...course, currentIndex: 0 };
+                App.render('coursePlayer');
+            },
+            
+            nextSlide: () => {
+                if(App.currentCourseSession.currentIndex < App.currentCourseSession.slides.length - 1) {
+                    App.currentCourseSession.currentIndex++;
+                    App.render('coursePlayer');
+                }
+            },
+            
+            prevSlide: () => {
+                if(App.currentCourseSession.currentIndex > 0) {
+                    App.currentCourseSession.currentIndex--;
+                    App.render('coursePlayer');
+                }
+            },
+            
+            jumpToSlide: (idx) => {
+                App.currentCourseSession.currentIndex = idx;
+                App.render('coursePlayer');
+            },
+            
+            finishCourse: async () => {
+                const c = App.currentCourseSession;
+                // Save result
+                const result = {
+                    resultId: 'rc' + Date.now(),
+                    userId: App.currentUser.id,
+                    userName: App.currentUser.name,
+                    courseId: c.id,
+                    courseTitle: c.title,
+                    type: 'course',
+                    date: new Date().toISOString()
+                };
+                App.showLoader(true);
+                await DB.save("results", result);
+                App.showLoader(false);
+                App.showModal("Course Completed", "Congratulations! Your progress has been saved.", false, () => {
+                     App.render('dashboard');
+                });
+            },
+
+            // --- COURSE MANAGEMENT ---
+            startCreateCourse: () => { App.editingCourse = null; App.render('courseForm'); },
+            editCourse: async (id) => {
+                App.showLoader(true);
+                const c = await DB.getById("courses", id);
+                App.showLoader(false);
+                if(c) { App.editingCourse = c; App.render('courseForm'); }
+            },
+            deleteCourse: (id) => {
+                App.showModal("Delete Course?", "Are you sure?", true, async () => {
+                    App.showLoader(true);
+                    await DB.delete("courses", id);
+                    const allUsers = await DB.getAll("users");
+                    for(const u of allUsers) {
+                        if((u.assignedCourses || []).includes(id)) {
+                            u.assignedCourses = u.assignedCourses.filter(a => a !== id);
+                            await DB.save("users", u);
+                        }
+                    }
+                    App.showLoader(false);
+                    App.render('manageCourses');
+                });
+            },
+            
+            addSlideHTML: () => {
+                const container = document.getElementById('slides-container');
+                const idx = container.children.length;
+                const div = document.createElement('div');
+                div.className = "slide-block bg-gray-50 p-6 rounded border border-gray-200 mb-6 relative";
+                div.innerHTML = `
+                    <div class="absolute top-4 right-4 text-red-400 cursor-pointer" onclick="this.closest('.slide-block').remove();" title="Remove Slide"><i class="fas fa-trash"></i></div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-bold mb-2">Slide ${idx+1} Title</label>
+                        <input type="text" class="s-title w-full p-3 border border-gray-300 rounded" placeholder="Slide Title">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-bold mb-2">Content</label>
+                        <textarea class="s-content w-full p-3 border border-gray-300 rounded h-32"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-2">Media URL</label>
+                        <input type="text" class="s-media w-full p-3 border border-gray-300 rounded" placeholder="Optional image/video URL">
+                    </div>
+                `;
+                container.appendChild(div);
+            },
+            
+            handleSaveCourse: async (e) => {
+                e.preventDefault();
+                const title = document.getElementById('courseTitle').value.trim();
+                const desc = document.getElementById('courseDesc').value.trim();
+                const linkedQuizId = document.getElementById('courseLinkedQuiz').value; // Get Linked Quiz
+                
+                const sBlocks = document.querySelectorAll('.slide-block');
+                const slides = Array.from(sBlocks).map(b => ({
+                    title: b.querySelector('.s-title').value,
+                    content: b.querySelector('.s-content').value,
+                    mediaUrl: b.querySelector('.s-media').value
+                }));
+                
+                const courseData = {
+                    id: App.editingCourse ? App.editingCourse.id : Date.now(),
+                    title, desc, slides, linkedQuizId
+                };
+                
+                App.showLoader(true);
+                await DB.save("courses", courseData);
+                App.showLoader(false);
+                App.editingCourse = null;
+                App.showModal("Success", "Course Saved!", false, () => App.render('manageCourses'));
+            },
+
+            // --- QUIZ MANAGEMENT ---
             startCreateQuiz: () => { App.editingQuiz = null; App.render('quizForm'); },
             editQuiz: async (id) => { 
                 App.showLoader(true);
@@ -924,8 +1326,9 @@
                 e.preventDefault();
                 const title = document.getElementById('quizTitle').value.trim();
                 const desc = document.getElementById('quizDesc').value.trim();
-                const introText = document.getElementById('quizIntroText').value.trim();       // New field
-                const materialLink = document.getElementById('quizMaterialLink').value.trim(); // New field
+                const introText = document.getElementById('quizIntroText').value.trim();
+                const materialLink = document.getElementById('quizMaterialLink').value.trim();
+                const linkedCourseId = document.getElementById('quizLinkedCourse').value; // Get Linked Course
                 const displayCount = parseInt(document.getElementById('quizDisplayCount').value);
                 const passMark = parseInt(document.getElementById('quizPassMark').value);
                 
@@ -940,7 +1343,7 @@
                 const quizData = { 
                     id: App.editingQuiz ? App.editingQuiz.id : Date.now(),
                     title, desc, questions, displayCount, passMark,
-                    introText, materialLink // Save new fields
+                    introText, materialLink, linkedCourseId
                 };
 
                 App.showLoader(true);
