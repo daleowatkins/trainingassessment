@@ -88,7 +88,7 @@
 
     <!-- FOOTER -->
     <footer class="bg-gray-800 text-gray-500 py-6 text-center text-sm mt-auto">
-        <p>&copy; 2026 Country Lion Training Assessment. Version 1.8.5</p>
+        <p>&copy; 2026 Country Lion Training Assessment. Version 1.8.6</p>
     </footer>
 
     <!-- JAVASCRIPT LOGIC -->
@@ -301,6 +301,35 @@
                 } else {
                     nav.innerHTML = '';
                 }
+            },
+            
+            // --- TEXT FORMATTING HELPER ---
+            insertFormat: (btn, format) => {
+                const textarea = btn.closest('.slide-block').querySelector('.s-content');
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
+                const text = textarea.value;
+                const selection = text.substring(start, end);
+                
+                let insert = '';
+                let newCursorPos = start;
+
+                if (['😀','👍','✅','⭐','⚠️','🔴','🟢'].includes(format)) {
+                     insert = format;
+                     textarea.value = text.substring(0, start) + insert + text.substring(end);
+                     newCursorPos = start + insert.length;
+                } else {
+                    if (format === 'bold') insert = `<b>${selection}</b>`;
+                    if (format === 'italic') insert = `<i>${selection}</i>`;
+                    if (format === 'underline') insert = `<u>${selection}</u>`;
+                    if (format === 'list') insert = `<ul>\n<li>${selection}</li>\n</ul>`;
+                    textarea.value = text.substring(0, start) + insert + text.substring(end);
+                    newCursorPos = end + insert.length;
+                }
+                
+                textarea.focus();
+                textarea.selectionStart = newCursorPos;
+                textarea.selectionEnd = newCursorPos;
             },
 
             render: async (viewName, data = null) => {
@@ -812,6 +841,21 @@
                             
                             const quizzesForLink = await DB.getAll("quizzes");
                             const quizOptions = quizzesForLink.map(q => `<option value="${q.id}" ${c.linkedQuizId == q.id ? 'selected' : ''}>${q.title}</option>`).join('');
+                            
+                            const toolbarHTML = `
+                                <div class="flex gap-1 mb-2 bg-gray-100 p-1 rounded border border-gray-200 flex-wrap">
+                                    <button type="button" onclick="window.app.insertFormat(this, 'bold')" class="p-1 hover:bg-gray-200 rounded" title="Bold"><i class="fas fa-bold"></i></button>
+                                    <button type="button" onclick="window.app.insertFormat(this, 'italic')" class="p-1 hover:bg-gray-200 rounded" title="Italic"><i class="fas fa-italic"></i></button>
+                                    <button type="button" onclick="window.app.insertFormat(this, 'underline')" class="p-1 hover:bg-gray-200 rounded" title="Underline"><i class="fas fa-underline"></i></button>
+                                    <button type="button" onclick="window.app.insertFormat(this, 'list')" class="p-1 hover:bg-gray-200 rounded" title="Bullet List"><i class="fas fa-list-ul"></i></button>
+                                    <div class="border-l border-gray-300 mx-1"></div>
+                                    <button type="button" onclick="window.app.insertFormat(this, '✅')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">✅</button>
+                                    <button type="button" onclick="window.app.insertFormat(this, '⚠️')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">⚠️</button>
+                                    <button type="button" onclick="window.app.insertFormat(this, '⭐')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">⭐</button>
+                                    <button type="button" onclick="window.app.insertFormat(this, '👍')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">👍</button>
+                                    <button type="button" onclick="window.app.insertFormat(this, '🔴')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">🔴</button>
+                                    <button type="button" onclick="window.app.insertFormat(this, '🟢')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">🟢</button>
+                                </div>`;
 
                             const sBlocks = c.slides.map((slide, idx) => `
                                 <div class="slide-block bg-gray-50 p-6 rounded border border-gray-200 mb-6 relative">
@@ -822,6 +866,7 @@
                                     </div>
                                     <div class="mb-4">
                                         <label class="block text-sm font-bold mb-2">Content (Text)</label>
+                                        ${toolbarHTML}
                                         <textarea class="s-content w-full p-3 border border-gray-300 rounded h-32" required>${slide.content}</textarea>
                                     </div>
                                     <div>
@@ -1267,6 +1312,22 @@
                 const idx = container.children.length;
                 const div = document.createElement('div');
                 div.className = "slide-block bg-gray-50 p-6 rounded border border-gray-200 mb-6 relative";
+                
+                const toolbarHTML = `
+                    <div class="flex gap-1 mb-2 bg-gray-100 p-1 rounded border border-gray-200 flex-wrap">
+                        <button type="button" onclick="window.app.insertFormat(this, 'bold')" class="p-1 hover:bg-gray-200 rounded" title="Bold"><i class="fas fa-bold"></i></button>
+                        <button type="button" onclick="window.app.insertFormat(this, 'italic')" class="p-1 hover:bg-gray-200 rounded" title="Italic"><i class="fas fa-italic"></i></button>
+                        <button type="button" onclick="window.app.insertFormat(this, 'underline')" class="p-1 hover:bg-gray-200 rounded" title="Underline"><i class="fas fa-underline"></i></button>
+                        <button type="button" onclick="window.app.insertFormat(this, 'list')" class="p-1 hover:bg-gray-200 rounded" title="Bullet List"><i class="fas fa-list-ul"></i></button>
+                        <div class="border-l border-gray-300 mx-1"></div>
+                        <button type="button" onclick="window.app.insertFormat(this, '✅')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">✅</button>
+                        <button type="button" onclick="window.app.insertFormat(this, '⚠️')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">⚠️</button>
+                        <button type="button" onclick="window.app.insertFormat(this, '⭐')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">⭐</button>
+                        <button type="button" onclick="window.app.insertFormat(this, '👍')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">👍</button>
+                        <button type="button" onclick="window.app.insertFormat(this, '🔴')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">🔴</button>
+                        <button type="button" onclick="window.app.insertFormat(this, '🟢')" class="p-1 hover:bg-gray-200 rounded text-lg leading-none">🟢</button>
+                    </div>`;
+
                 div.innerHTML = `
                     <div class="absolute top-4 right-4 text-red-400 cursor-pointer" onclick="this.closest('.slide-block').remove();" title="Remove Slide"><i class="fas fa-trash"></i></div>
                     <div class="mb-4">
@@ -1275,6 +1336,7 @@
                     </div>
                     <div class="mb-4">
                         <label class="block text-sm font-bold mb-2">Content</label>
+                        ${toolbarHTML}
                         <textarea class="s-content w-full p-3 border border-gray-300 rounded h-32"></textarea>
                     </div>
                     <div>
