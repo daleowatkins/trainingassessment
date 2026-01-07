@@ -90,7 +90,7 @@
 
     <!-- FOOTER -->
     <footer class="bg-gray-800 text-gray-500 py-6 text-center text-sm mt-auto">
-        <p>&copy; 2026 Country Lion Training Assessment. Version 1.9.1</p>
+        <p>&copy; 2026 Country Lion Training Assessment. Version 1.9.2</p>
     </footer>
 
     <!-- JAVASCRIPT LOGIC -->
@@ -296,7 +296,12 @@
                     const adminLink = App.currentUser.role === 'admin'
                         ? `<button onclick="window.app.render('adminDashboard')" class="mr-4 text-sm font-bold text-lion-gold hover:text-yellow-400 transition"><i class="fas fa-tools mr-1"></i> Admin Panel</button>`
                         : '';
-                    nav.innerHTML = `<div class="flex items-center">${roleBadge}${adminLink}<span class="mr-4 text-sm text-gray-400 hidden sm:block">${App.currentUser.name}</span><button onclick="window.app.logout()" class="text-sm border border-gray-600 hover:border-white text-gray-300 hover:text-white px-3 py-1 rounded transition">Logout</button></div>`;
+                    // ADDED: Skills Analysis Link for Admin
+                    const skillsLink = App.currentUser.role === 'admin'
+                        ? `<a href="https://trainingmatrix-f5a8b.web.app/" target="_blank" class="mr-4 text-sm font-bold text-gray-300 hover:text-white transition flex items-center"><i class="fas fa-chart-pie mr-1"></i> Skills Analysis</a>`
+                        : '';
+                        
+                    nav.innerHTML = `<div class="flex items-center">${roleBadge}${skillsLink}${adminLink}<span class="mr-4 text-sm text-gray-400 hidden sm:block">${App.currentUser.name}</span><button onclick="window.app.logout()" class="text-sm border border-gray-600 hover:border-white text-gray-300 hover:text-white px-3 py-1 rounded transition">Logout</button></div>`;
                 } else {
                     nav.innerHTML = '';
                 }
@@ -622,6 +627,7 @@
                             break;
 
                         case 'quizResults':
+                            // ... (quizResults code unchanged)
                             const rId = data;
                             const res = await DB.getById("results", rId);
                             if (!res) { App.showModal("Error", "Result not found", false); return App.render('dashboard'); }
@@ -660,6 +666,7 @@
                             break;
 
                         case 'adminDashboard':
+                            // ... (adminDashboard code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const aUsers = await DB.getAll("users");
                             const aResults = await DB.getAll("results");
@@ -774,6 +781,7 @@
                             break;
 
                         case 'manageCourses':
+                            // ... (manageCourses code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const mCourses = await DB.getAll("courses");
                             const mcUsers = await DB.getAll("users");
@@ -787,6 +795,7 @@
                             break;
 
                         case 'userForm':
+                            // ... (userForm code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const isEdit = !!App.editingUser;
                             const u = App.editingUser || { name: '', username: '', pin: '', email: '', role: 'learner', assigned: [], assignedCourses: [] };
