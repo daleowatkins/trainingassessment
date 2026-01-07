@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- EmailJS -->
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <!-- jsPDF for Certificates -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <!-- Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     
@@ -88,7 +90,7 @@
 
     <!-- FOOTER -->
     <footer class="bg-gray-800 text-gray-500 py-6 text-center text-sm mt-auto">
-        <p>&copy; 2026 Country Lion Training Assessment. Version 1.8.6</p>
+        <p>&copy; 2026 Country Lion Training Assessment. Version 1.9.1</p>
     </footer>
 
     <!-- JAVASCRIPT LOGIC -->
@@ -195,14 +197,12 @@
                 await deleteDoc(doc(db, collName, String(id)));
             },
 
-            // New method to estimate storage size
             getStorageEstimate: async () => {
                 let totalBytes = 0;
                 const collections = ["users", "quizzes", "courses", "results"];
                 for (const col of collections) {
                     const snap = await getDocs(collection(db, col));
                     snap.forEach(doc => {
-                        // Rough estimation based on JSON string length
                         totalBytes += JSON.stringify(doc.data()).length;
                     });
                 }
@@ -255,7 +255,6 @@
                 else el.classList.add('hidden');
             },
 
-            // --- CUSTOM MODAL SYSTEM ---
             showModal: (title, msg, isConfirm, onYes) => {
                  const m = document.getElementById('custom-modal');
                  document.getElementById('modal-title').textContent = title;
@@ -303,7 +302,6 @@
                 }
             },
             
-            // --- TEXT FORMATTING HELPER ---
             insertFormat: (btn, format) => {
                 const textarea = btn.closest('.slide-block').querySelector('.s-content');
                 const start = textarea.selectionStart;
@@ -332,12 +330,112 @@
                 textarea.selectionEnd = newCursorPos;
             },
 
+            // --- CERTIFICATE GENERATION ---
+            downloadCertificate: async (resultId) => {
+                App.showLoader(true);
+                const result = await DB.getById("results", resultId);
+                App.showLoader(false);
+                
+                if (!result) return App.showModal("Error", "Result not found", false);
+                if (!result.passed) return App.showModal("Error", "Certificate only available for passed assessments.", false);
+
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF({ orientation: 'landscape' });
+
+                // Colors
+                const goldColor = "#D4AF37";
+                const darkText = "#1a202c";
+
+                // Border
+                doc.setLineWidth(3);
+                doc.setDrawColor(goldColor); 
+                doc.rect(10, 10, 277, 190);
+                
+                // Draw Seal
+                const drawSeal = (x, y) => {
+                    doc.setFillColor(goldColor);
+                    // Ribbons
+                    doc.triangle(x, y, x - 10, y + 40, x - 20, y + 35, 'F');
+                    doc.triangle(x, y, x + 10, y + 40, x + 20, y + 35, 'F');
+                    // Circle
+                    doc.circle(x, y, 20, 'F');
+                    // Inner ring
+                    doc.setDrawColor(255, 255, 255);
+                    doc.setLineWidth(1);
+                    doc.circle(x, y, 17, 'S');
+                    // Text inside
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(8);
+                    doc.setFont("helvetica", "bold");
+                    doc.text("OFFICIAL", x, y - 3, { align: "center" });
+                    doc.text("CERTIFIED", x, y + 2, { align: "center" });
+                    doc.setFontSize(6);
+                    doc.setFont("helvetica", "normal");
+                    doc.text("COUNTRY LION", x, y + 7, { align: "center" });
+                };
+
+                drawSeal(240, 140);
+                
+                // Text Content
+                doc.setTextColor(darkText);
+                
+                // Header (Branding)
+                doc.setFontSize(24);
+                doc.setTextColor(darkText);
+                doc.setFont("helvetica", "bold");
+                doc.text("COUNTRY LION", 148.5, 40, { align: "center" });
+                doc.setTextColor(goldColor);
+                doc.text("TRAINING", 148.5, 50, { align: "center" });
+
+                doc.setFontSize(40);
+                doc.setTextColor(goldColor);
+                doc.text("CERTIFICATE", 148.5, 75, { align: "center" });
+                doc.setFontSize(16);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(darkText);
+                doc.text("OF ACHIEVEMENT", 148.5, 85, { align: "center" });
+                
+                doc.setLineWidth(0.5);
+                doc.setDrawColor(200, 200, 200);
+                doc.line(100, 95, 197, 95); 
+                
+                doc.setFontSize(14);
+                doc.setTextColor(100);
+                doc.text("THIS IS TO CERTIFY THAT", 148.5, 105, { align: "center" });
+                
+                doc.setFontSize(30);
+                doc.setTextColor(darkText);
+                doc.setFont("helvetica", "bold");
+                doc.text(result.userName, 148.5, 120, { align: "center" });
+                
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(14);
+                doc.setTextColor(100);
+                doc.text("HAS SUCCESSFULLY COMPLETED THE ASSESSMENT", 148.5, 135, { align: "center" });
+                
+                doc.setFontSize(22);
+                doc.setTextColor(darkText);
+                doc.setFont("helvetica", "bold");
+                doc.text(result.quizTitle, 148.5, 150, { align: "center" });
+                
+                doc.setFontSize(12);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(100);
+                doc.text(`Score Achieved: ${result.score}%`, 148.5, 165, { align: "center" });
+                doc.text(`Date: ${new Date(result.date).toLocaleDateString()}`, 148.5, 172, { align: "center" });
+
+                doc.setFontSize(10);
+                doc.setTextColor(150);
+                doc.text("Verified by Country Lion Training Assessment System", 148.5, 190, { align: "center" });
+
+                doc.save(`${result.userName}_${result.quizTitle}_Certificate.pdf`);
+            },
+
             render: async (viewName, data = null) => {
                 const container = document.getElementById('app');
                 App.showLoader(true);
                 App.updateNav();
 
-                // HELPER FOR ESCAPING QUOTES IN INPUT VALUES
                 const safe = (str) => String(str || '').replace(/"/g, '&quot;');
                 
                 try {
@@ -524,7 +622,6 @@
                             break;
 
                         case 'quizResults':
-                            // ... (quizResults code unchanged)
                             const rId = data;
                             const res = await DB.getById("results", rId);
                             if (!res) { App.showModal("Error", "Result not found", false); return App.render('dashboard'); }
@@ -546,15 +643,23 @@
                             } else { resHtml = "<p>Legacy data unavailable.</p>"; }
 
                             const backAct = App.currentUser.role === 'admin' ? "window.app.render('adminDashboard')" : "window.app.render('dashboard')";
+                            const certBtn = res.passed 
+                                ? `<button onclick="window.app.downloadCertificate('${rId}')" class="bg-lion-gold text-white px-6 py-2 rounded hover:bg-yellow-600 transition ml-2 font-bold"><i class="fas fa-certificate mr-2"></i> Download Certificate</button>` 
+                                : '';
+
                             container.innerHTML = `
                                 <div class="max-w-3xl mx-auto fade-in">
-                                    <div class="bg-white p-8 rounded-xl shadow-lg mb-8 text-center border-t-4 ${res.passed ? 'border-green-500' : 'border-red-500'}"><h2 class="text-3xl font-bold mb-2">${res.passed ? 'PASSED' : 'FAILED'}</h2><div class="text-5xl font-bold my-4 ${res.passed ? 'text-green-600' : 'text-red-600'}">${res.score}%</div><p class="text-gray-500 mb-6">User: ${res.userName} | Date: ${new Date(res.date).toLocaleDateString()}</p><button onclick="${backAct}" class="bg-gray-800 text-white px-6 py-2 rounded hover:bg-gray-900 transition">Back</button></div>
+                                    <div class="bg-white p-8 rounded-xl shadow-lg mb-8 text-center border-t-4 ${res.passed ? 'border-green-500' : 'border-red-500'}"><h2 class="text-3xl font-bold mb-2">${res.passed ? 'PASSED' : 'FAILED'}</h2><div class="text-5xl font-bold my-4 ${res.passed ? 'text-green-600' : 'text-red-600'}">${res.score}%</div><p class="text-gray-500 mb-6">User: ${res.userName} | Date: ${new Date(res.date).toLocaleDateString()}</p>
+                                    <div class="flex justify-center">
+                                        <button onclick="${backAct}" class="bg-gray-800 text-white px-6 py-2 rounded hover:bg-gray-900 transition">Back</button>
+                                        ${certBtn}
+                                    </div>
+                                    </div>
                                     <div class="space-y-6">${resHtml}</div>
                                 </div>`;
                             break;
 
                         case 'adminDashboard':
-                            // ... (adminDashboard code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const aUsers = await DB.getAll("users");
                             const aResults = await DB.getAll("results");
@@ -669,7 +774,6 @@
                             break;
 
                         case 'manageCourses':
-                            // ... (manageCourses code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const mCourses = await DB.getAll("courses");
                             const mcUsers = await DB.getAll("users");
@@ -683,7 +787,6 @@
                             break;
 
                         case 'userForm':
-                            // ... (userForm code unchanged)
                             if (!App.currentUser || App.currentUser.role !== 'admin') return App.render('login');
                             const isEdit = !!App.editingUser;
                             const u = App.editingUser || { name: '', username: '', pin: '', email: '', role: 'learner', assigned: [], assignedCourses: [] };
@@ -719,7 +822,10 @@
                                     if(r.type === 'course') {
                                         return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm">${new Date(r.date).toLocaleString()}</td><td class="p-3 text-sm font-medium">${r.courseTitle}</td><td class="p-3 text-sm font-bold text-blue-600">Completed</td><td class="p-3 text-sm">-</td></tr>`;
                                     } else {
-                                        return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm">${new Date(r.date).toLocaleString()}</td><td class="p-3 text-sm font-medium">${r.quizTitle}</td><td class="p-3 text-sm font-bold ${r.passed ? 'text-green-600' : 'text-red-600'}">${r.score}%</td><td class="p-3 text-sm"><button onclick="window.app.viewResult('${r.resultId}')" class="text-blue-600 hover:underline">View</button></td></tr>`;
+                                        const certBtnHist = r.passed 
+                                            ? `<button onclick="window.app.downloadCertificate('${r.resultId}')" class="text-xs text-lion-gold hover:text-yellow-600 font-bold ml-2"><i class="fas fa-certificate"></i></button>` 
+                                            : '';
+                                        return `<tr class="border-b hover:bg-gray-50"><td class="p-3 text-sm">${new Date(r.date).toLocaleString()}</td><td class="p-3 text-sm font-medium">${r.quizTitle}</td><td class="p-3 text-sm font-bold ${r.passed ? 'text-green-600' : 'text-red-600'}">${r.score}%</td><td class="p-3 text-sm"><button onclick="window.app.viewResult('${r.resultId}')" class="text-blue-600 hover:underline">View</button>${certBtnHist}</td></tr>`;
                                     }
                                 }).join('');
                                 
